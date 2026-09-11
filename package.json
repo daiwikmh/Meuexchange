@@ -14,7 +14,8 @@
     "build:contracts": "forge build",
     "test:contracts": "forge test",
     "abi": "./scripts/extract-abi.sh",
-    "check:attestation": "tsx scripts/check-attestation.ts"
+    "check:attestation": "tsx scripts/check-attestation.ts",
+    "preflight": "tsx scripts/preflight.ts"
   },
   "dependencies": {
     "@gluwa/usc-sdk": "0.18.0",

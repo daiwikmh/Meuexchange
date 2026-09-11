@@ -163,9 +163,8 @@ a participant wallet through the MetaMask SDK. It never receives a private key.
   `_processAndEmitEvent`, so the desk binds trust to the registry's address (as the reference
   examples do). A contract at the same address on another attested chain would be indistinguishable.
   Deploy the registry from a nonce that is not reproducible on the other attested chain.
-- **Attestation latency.** ~8 minutes on Sepolia. Ethereum mainnet ran ~580 blocks (~2h) behind head
-  when measured, which is well inside the feed's 24h heartbeat but means the desk always marks to a
-  slightly historic round.
+- **Attestation latency.** Both chains ran ~40 blocks behind head when measured (Sepolia ~8 min,
+  mainnet ~8 min), so the desk always marks to a slightly historic round.
 - **The gold price is only as fresh as the last proved round.** A fast crash between rounds is not
   visible to the desk until the next `AnswerUpdated` is proved. The 26-hour staleness guard bounds
   the exposure but does not remove it.

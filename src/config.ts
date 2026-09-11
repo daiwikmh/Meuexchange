@@ -22,6 +22,12 @@ export interface AppConfig {
   priceFromBlock?: number;
 }
 
+/** Treats an empty environment variable as unset, so `.env` placeholders do not win over defaults. */
+function env(name: string) {
+  const value = process.env[name];
+  return value && value.trim() ? value.trim() : undefined;
+}
+
 export function loadConfig(): AppConfig {
   const environment = resolveEnvironment();
   const collateralChain = chainsForRole(environment, "collateral")[0];
@@ -31,31 +37,32 @@ export function loadConfig(): AppConfig {
   const collateral: WatchedChain = {
     role: "collateral",
     name: collateralChain.name,
-    chainKey: Number(process.env.SOURCE_CHAIN_KEY ?? collateralChain.chainKey),
-    rpcUrl: process.env.SOURCE_CHAIN_RPC_URL,
-    emitter: process.env.SOURCE_REGISTRY_ADDRESS
+    chainKey: Number(env("SOURCE_CHAIN_KEY") ?? collateralChain.chainKey),
+    rpcUrl: env("SOURCE_CHAIN_RPC_URL"),
+    emitter: env("SOURCE_REGISTRY_ADDRESS")
   };
 
   const price: WatchedChain = {
     role: "price",
     name: priceChain.name,
     chainKey: environment.goldFeed.chainKey,
-    rpcUrl: process.env.PRICE_CHAIN_RPC_URL,
-    emitter: process.env.GOLD_AGGREGATOR_ADDRESS ?? environment.goldFeed.aggregator
+    rpcUrl: env("PRICE_CHAIN_RPC_URL"),
+    emitter: env("GOLD_AGGREGATOR_ADDRESS") ?? environment.goldFeed.aggregator
   };
 
-  const workerPrivateKey = process.env.PROOF_WORKER_PRIVATE_KEY;
-  const proving = Boolean(workerPrivateKey && collateral.rpcUrl && collateral.emitter && process.env.ASC_REPO_DESK_ADDRESS);
+  const workerPrivateKey = env("PROOF_WORKER_PRIVATE_KEY");
+  const deskAddress = env("ASC_REPO_DESK_ADDRESS");
+  const proving = Boolean(workerPrivateKey && collateral.rpcUrl && collateral.emitter && deskAddress);
 
   return {
     mode: proving ? "proving" : "read-only",
-    port: Number(process.env.PORT ?? 3000),
+    port: Number(env("PORT") ?? 3000),
     environment,
     collateral,
     price,
-    deskAddress: process.env.ASC_REPO_DESK_ADDRESS,
+    deskAddress,
     workerPrivateKey,
-    workerFromBlock: process.env.WORKER_FROM_BLOCK ? Number(process.env.WORKER_FROM_BLOCK) : undefined,
-    priceFromBlock: process.env.PRICE_FROM_BLOCK ? Number(process.env.PRICE_FROM_BLOCK) : undefined
+    workerFromBlock: env("WORKER_FROM_BLOCK") ? Number(env("WORKER_FROM_BLOCK")) : undefined,
+    priceFromBlock: env("PRICE_FROM_BLOCK") ? Number(env("PRICE_FROM_BLOCK")) : undefined
   };
 }

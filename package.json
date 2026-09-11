@@ -1,0 +1,35 @@
+{
+  "name": "meu-creditcoin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "dev:web": "astro dev",
+    "build:web": "astro build",
+    "worker": "tsx src/worker.ts",
+    "check": "tsc --noEmit",
+    "test": "tsx --test test/**/*.test.ts",
+    "build:contracts": "forge build",
+    "test:contracts": "forge test",
+    "abi": "./scripts/extract-abi.sh",
+    "check:attestation": "tsx scripts/check-attestation.ts"
+  },
+  "dependencies": {
+    "@gluwa/usc-sdk": "0.18.0",
+    "@hono/node-server": "^1.13.7",
+    "@metamask/sdk": "^0.34.0",
+    "dotenv": "^17.4.2",
+    "ethers": "^6.17.0",
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@gluwa/asc-contracts": "0.2.1",
+    "@openzeppelin/contracts": "5.4.0",
+    "@types/node": "^22.10.1",
+    "astro": "^5.14.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

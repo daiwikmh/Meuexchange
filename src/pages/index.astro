@@ -1,0 +1,98 @@
+---
+import '../styles/landing.css';
+const stages = [
+  {name:'Terms', description:'Publish the credit line on Creditcoin before any bullion moves.', position:'issue'},
+  {name:'Bullion', description:'Escrow allocated gold on its own chain and emit one unambiguous event.', position:'verify'},
+  {name:'Mark-to-market', description:'The Chainlink XAU/USD round is proved from the chain that hosts it.', position:'collateral'},
+  {name:'Credit', description:'The contract checks both proofs, then releases principal inside the advance rate.', position:'settlement'},
+];
+const applications = [
+  {id:'collateral', tab:'Gold collateral', audience:'FOR BORROWERS & LENDERS', title:'The gold stays put. The credit moves.', text:'Escrow allocated gold where it already lives and borrow against it on Creditcoin. The desk will not release principal until it has verified the pledge itself.', image:'city', label:'BULLION / ETHEREUM SEPOLIA', facts:[['Collateral','Allocated gold, one token per troy ounce'],['Credit','Drawn in tCTC on Creditcoin'],['Gate','Proved CollateralPledged event']]},
+  {id:'price', tab:'Proved gold price', audience:'FOR RISK & TREASURY', title:'A spot price nobody has to be trusted for.', text:'The desk marks its book against the Chainlink XAU/USD feed — proved from Ethereum, where the feed actually lives, rather than relayed by an operator onto Creditcoin. The advance rate is enforced against that proved round.', image:'city-mesh', label:'XAU / USD / ATTESTCOIN PROOF', facts:[['Evidence','Proved AnswerUpdated round'],['Verifier','Block prover precompile'],['Operators','None in the trust path']]},
+  {id:'default', tab:'Margin & default', audience:'FOR RISK TEAMS', title:'Silence is evidence too.', text:'Because every payment that exists carries a proof, an unproved balance at maturity is a real shortfall. Margin calls and defaults are both permissionless, driven by proved prices and proved silence.', image:'city', label:'RISK / PERMISSIONLESS MARGIN CALL', facts:[['Margin call','Proved spot below maintenance'],['Default','Maturity with repayment unproved'],['Caller','Anyone, no privileged role']]},
+];
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="MEU Exchange runs gold-backed credit on Creditcoin, with the bullion pledge and the Chainlink XAU/USD price both proved through the Attestcoin Protocol." />
+    <meta name="theme-color" content="#191a1c" />
+    <link rel="preload" href="/fonts/dm-sans.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/images/city.webp" as="image" />
+    <title>MEU Exchange — Real gold. Proved across chains.</title>
+  </head>
+  <body>
+    <!-- THESIS: Reveal the market beneath the real world through an interactive photographic canvas.
+      OWN-WORLD: Reference-pinned aerial photography, warm-white space, violet type, diamond anchors and pixel masks.
+      STORY: Explore real assets, understand the lifecycle, then interact with a clearly labelled product demo.
+      FIRST VIEWPORT: Full-bleed city, centered floating navigation, cursor scanner, low single-line headline.
+      FORM: User-pinned Geolava reference; original MEU content and canvas implementation.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md -->
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <nav class="navigation" aria-label="Main navigation">
+        <a class="wordmark" href="#home" aria-label="MEU Exchange home">meu<span>exchange</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1 15 8 8 15 1 8Z"/></svg></a>
+        <button class="menu-toggle" aria-expanded="false" aria-controls="nav-links">Menu <span aria-hidden="true">+</span></button>
+        <div class="nav-links" id="nav-links"><a href="#home" class="active">Home</a><a href="#assets">Our assets</a><a href="#platform">Platform</a><a href="#about">About</a></div>
+        <a class="nav-cta" href="/dashboard"><svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6"/></svg> Explore demo</a>
+      </nav>
+    </header>
+    <main id="main">
+      <section id="home" class="hero scanner" data-scanner aria-label="Interactive asset landscape">
+        <img class="map-photo" src="/images/city.webp" width="2016" height="1232" alt="Aerial view of a city, connecting physical infrastructure with a digital asset landscape" fetchpriority="high" />
+        <canvas class="scan-canvas" aria-hidden="true"></canvas>
+        <div class="hero-heading"><h1>Real gold.<br class="mobile-break" /> Proved across chains.</h1><p>Bullion-backed credit on Creditcoin, priced and verified where the evidence lives.</p></div>
+        <div class="scan-controls"><button class="scan-toggle" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10M11 3v10"/></svg><span>Pause scan</span></button><span class="scan-hint">Move to discover ↗</span></div>
+        <div class="hero-caption"><span class="status-dot"></span> Interactive visualisation <span>/</span> Illustrative, not live asset data</div>
+        <a class="scroll-cue" href="#about" aria-label="Discover MEU Exchange"><svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v17m-6-6 6 6 6-6"/></svg></a>
+      </section>
+      <section class="intro section-frame" id="about">
+        <h2>The vault holds the gold.<br />Creditcoin holds the credit.<br />Proofs connect them.</h2>
+        <div class="intro-bottom"><span class="section-name"><i></i> WHY MEU EXCHANGE</span><p>Neither the gold nor its price lives on the chain that should lend against them. The Attestcoin Protocol closes both gaps with proofs instead of custodians and oracle operators.</p></div>
+        <span class="frame-node left"></span><span class="frame-node right"></span>
+      </section>
+      <section class="asset-landscape scanner" data-scanner id="platform" aria-labelledby="landscape-title">
+        <img class="map-photo" src="/images/city.webp" width="2016" height="1232" loading="lazy" alt="City architecture with interactive asset lifecycle annotations" />
+        <canvas class="scan-canvas" aria-hidden="true"></canvas>
+        <div class="pixel-edge" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <h2 id="landscape-title">One ounce.<br />Two chains. No oracle.</h2>
+        <div class="asset-pins">{stages.map((stage,i)=><button class={`asset-pin ${stage.position}`} data-stage={i} aria-expanded={i===0 ? 'true':'false'}><span class="pin-anchor" aria-hidden="true"></span><span class="pin-content"><span class="pin-title">{stage.name}<span aria-hidden="true">↗</span></span><span class="pin-description">{stage.description}</span></span></button>)}</div>
+        <span class="landscape-caption">SELECT A POINT TO EXPLORE THE PROOF PATH</span>
+      </section>
+      <section class="connection section-frame" aria-labelledby="connection-title">
+        <div class="section-heading"><h2 id="connection-title">From an ounce of gold<br />to Creditcoin credit.</h2><p>The pledge is escrowed and the price is published on chains Creditcoin cannot see. Both are attested, proved, and verified before a single unit of principal moves.</p></div>
+        <div class="connection-graphic" aria-label="An asset connects to issuance, eligibility, repo collateral, and transfer workflows">
+          <svg class="connection-lines" viewBox="0 0 1000 360" preserveAspectRatio="none" aria-hidden="true"><path d="M120 80H360L500 180 640 80H880M120 280H360L500 180 640 280H880M500 0V360"/><path class="flow-line" d="M120 80H360L500 180 640 280H880"/></svg>
+          <div class="connection-center"><div class="diamond-stack" aria-hidden="true"><i></i><i></i><i></i></div><strong>meu</strong><span>EXCHANGE</span></div>
+          <span class="connection-label top-left">Allocated gold escrow</span><span class="connection-label bottom-left">Chainlink XAU/USD</span><span class="connection-label top-right">Inclusion proofs</span><span class="connection-label bottom-right">Wallet-signed credit</span>
+        </div>
+        <div class="tech-strip"><span>BUILT AROUND</span><span class="hedera-mark">◈ <b>Creditcoin</b></span><span>Attestcoin Protocol</span><span>Chainlink XAU/USD ↗</span></div>
+      </section>
+      <section class="applications section-frame" id="assets" aria-labelledby="applications-title">
+        <div class="section-heading"><h2 id="applications-title">Real gold.<br />Real evidence.</h2><p>Three places where the desk replaces a trusted report with a proof the contract can check for itself.</p></div>
+        <div class="application-tabs" role="tablist" aria-label="Asset applications">{applications.map((app,i)=><button id={`tab-${app.id}`} role="tab" aria-selected={i===0} aria-controls={`panel-${app.id}`} tabindex={i===0?0:-1} data-tab={app.id}>{app.tab}<span aria-hidden="true">↗</span></button>)}</div>
+        {applications.map((app,i)=><div class="application-panel" id={`panel-${app.id}`} role="tabpanel" aria-labelledby={`tab-${app.id}`} tabindex="0" hidden={i!==0}>
+          <div class={`application-image ${app.id}-image`}><img src={`/images/${app.image}.webp`} alt={`Illustrative city landscape for ${app.tab.toLowerCase()}`} loading="lazy" width="2016" height="1232"/><span class="image-bracket"></span><span class="image-label">{app.label}</span></div>
+          <div class="application-content"><span class="small-label">{app.audience}</span><h3>{app.title}</h3><p>{app.text}</p><dl>{app.facts.map(([label,value])=><div><dt>{label}</dt><dd>{value}</dd></div>)}</dl><a class="text-link" href="#explore">Explore the workflow <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6"/></svg></a></div>
+        </div>)}
+        <p class="section-footnote">Creditcoin Testnet, reading Ethereum Sepolia for custody and Ethereum mainnet for the gold price. No live offerings are listed on MEU Exchange yet.</p>
+      </section>
+      <section class="demo-section section-frame" id="explore" aria-labelledby="demo-title">
+        <div class="section-heading"><h2 id="demo-title">See the proof path.<br />Follow the evidence.</h2><p>A small, interactive look at how an ounce of gold becomes drawable credit on Creditcoin.</p></div>
+        <div class="demo-workspace">
+          <div class="demo-summary"><span class="small-label"><i class="status-dot"></i> INTERACTIVE DEMO</span><h3>MEU Bullion Repo</h3><p>Illustrative agreement · No funds or transactions are sent.</p><div class="demo-asset-mark" aria-hidden="true"><svg viewBox="0 0 200 200"><path d="m100 20 80 45v75l-80 45-80-45V65Zm0 0v80m-80-35 80 35 80-35m-80 35v85m-80-45 80-40 80 40"/></svg></div><span class="demo-caption">A CLEAR PATH FROM EVENT TO PROOF</span></div>
+          <div class="demo-flow"><ol class="workflow-steps">{['Publish the credit line','Pledge the bullion','Prove the gold price','Draw the principal'].map((step,i)=><li data-demo-step={i} class={i===0?'current':''}><span class="step-number">0{i+1}</span><span>{step}</span><span class="step-state">{i===0?'Ready':'Upcoming'}</span></li>)}</ol><div class="demo-next"><p id="demo-description" aria-live="polite">Start with lender-defined repo terms published on Creditcoin.</p><button class="dark-button" id="demo-advance"><span>Pledge collateral</span><svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6"/></svg></button><button class="reset-button" id="demo-reset">Reset demo</button></div></div>
+        </div>
+      </section>
+      <section class="access-section section-frame" id="network">
+        <div class="section-heading"><h2>One proof layer.<br />Two ways to connect.</h2><p>For the teams financing an asset and the developers wiring the next chain into it.</p></div>
+        <div class="access-columns"><article><span class="small-label">FINANCING WORKFLOWS</span><h3>Bring your bullion.<br />Keep it where it lives.</h3><p>Escrow on the chain the gold already sits on and draw credit on Creditcoin once the pledge and the spot price are proved.</p><a class="text-link" href="#assets">Discover the workflows <span aria-hidden="true">→</span></a></article><article><span class="small-label">DEVELOPER INFRASTRUCTURE</span><h3>Connect the proof.<br />Keep your own keys.</h3><p>The API reads the ASCRepoDesk and prepares unsigned calldata. The only key in the system pays gas for permissionless proof submission.</p><details><summary>View integration overview <span aria-hidden="true">+</span></summary><div class="integration-details"><p>The Hono backend reads Creditcoin state through ethers and tracks the proof pipeline across both attested source chains.</p><code>GET /api/environment<br />GET /api/gold-price<br />GET /api/agreements/:id<br />POST /api/agreements/terms<br />POST /api/agreements/:id/draw<br />POST /api/agreements/:id/margin-call</code><p>Proof submission runs in the off-chain worker; value-moving calls are signed by participant wallets.</p></div></details></article></div>
+      </section>
+      <section class="closing scanner" data-scanner aria-labelledby="closing-title"><img class="map-photo" src="/images/city.webp" alt="" width="2016" height="1232" loading="lazy"/><canvas class="scan-canvas" aria-hidden="true"></canvas><div class="closing-content"><h2 id="closing-title">The value is real.<br />The evidence is on-chain.</h2><a class="light-button" href="#explore">Explore MEU Exchange <svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6"/></svg></a></div></section>
+    </main>
+    <footer class="site-footer"><div class="footer-top"><a class="wordmark" href="#home">meu<span>exchange</span></a><p>Cross-chain credit, proved on Creditcoin.</p><div><a href="#assets">Our assets</a><a href="#platform">Platform</a><a href="#network">Developers</a><a href="#about">About MEU</a></div></div><div class="footer-statement">Real world.<br /><span>Connected.</span></div><div class="footer-bottom"><span>© {new Date().getFullYear()} MEU Exchange</span><span>In development · Creditcoin Testnet</span><a href="#home">Back to top ↑</a></div></footer>
+    <script>import '../scripts/landing';</script>
+  </body>
+</html>

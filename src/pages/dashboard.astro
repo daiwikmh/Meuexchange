@@ -1,0 +1,42 @@
+---
+import '../styles/dashboard.css';
+import Sidebar from '../components/dashboard/Sidebar.astro';
+import DashboardHeader from '../components/dashboard/DashboardHeader.astro';
+import DashboardAlert from '../components/dashboard/DashboardAlert.astro';
+import OverviewPanel from '../components/dashboard/OverviewPanel.astro';
+import AttestationPanel from '../components/dashboard/AttestationPanel.astro';
+import LifecyclePanel from '../components/dashboard/LifecyclePanel.astro';
+import ProofQueuePanel from '../components/dashboard/ProofQueuePanel.astro';
+import WalletDialog from '../components/dashboard/WalletDialog.astro';
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="MEU Exchange operations dashboard for Attestcoin-proved repo collateral on Creditcoin Testnet." />
+    <link rel="preload" href="/fonts/dm-sans.woff2" as="font" type="font/woff2" crossorigin />
+    <title>MEU Exchange — Dashboard</title>
+  </head>
+  <body>
+    <a class="dash-skip" href="#dashboard-content">Skip to dashboard</a>
+    <div class="dashboard-shell">
+      <Sidebar />
+
+      <main class="dashboard-main" id="dashboard-content">
+        <DashboardHeader />
+
+        <DashboardAlert />
+
+        <div class="tab-panels">
+          <OverviewPanel />
+          <AttestationPanel />
+          <LifecyclePanel />
+          <ProofQueuePanel />
+        </div>
+      </main>
+    </div>
+    <WalletDialog />
+    <script>import { dashboardReady } from '../scripts/dashboard'; void dashboardReady;</script>
+  </body>
+</html>

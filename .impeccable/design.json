@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-11T12:52:16.226Z",
+  "title": "Design System: MEU Exchange",
+  "extensions": {
+    "shadows": [
+      {
+        "name": "navigation",
+        "value": "0 6px 30px #00000012",
+        "purpose": "Lift the fixed navigation over photography."
+      }
+    ],
+    "motion": [
+      {
+        "name": "navigation-color",
+        "value": "color .2s",
+        "purpose": "Navigation hover and active colors."
+      },
+      {
+        "name": "pin-background",
+        "value": "background .2s",
+        "purpose": "Expanded annotation background."
+      },
+      {
+        "name": "connection-flow",
+        "value": "flow 12s linear infinite",
+        "purpose": "SVG connection animation; disabled for reduced motion."
+      },
+      {
+        "name": "scanner-cell-lifetime",
+        "value": "1250ms",
+        "purpose": "Expire revealed cells; scanning pauses for reduced motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact-desktop",
+        "value": "1000px"
+      },
+      {
+        "name": "mobile",
+        "value": "700px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Dark action",
+      "kind": "button",
+      "refersTo": "button-dark",
+      "description": "Advance the illustrative lifecycle.",
+      "html": "<button class=\"ds-dark\">Verify participant <svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 12h15m-6-6 6 6-6 6\"/></svg></button>",
+      "css": ".ds-dark{display:inline-flex;gap:30px;align-items:center;justify-content:space-between;padding:14px 20px;font:13px 'DM Sans',sans-serif;background:var(--ink,#252527);color:#fff;border:0;border-radius:3px;cursor:pointer}.ds-dark svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.4}.ds-dark:hover{background:#6353d2}.ds-dark:focus-visible{outline:2px solid var(--purple,#7165ed);outline-offset:6px}"
+    },
+    {
+      "name": "Light action",
+      "kind": "button",
+      "refersTo": "button-light",
+      "description": "Link from the photographic closing section to the demo.",
+      "html": "<a class=\"ds-light\" href=\"#explore\">Explore MEU Exchange <svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 12h15m-6-6 6 6-6 6\"/></svg></a>",
+      "css": ".ds-light{display:inline-flex;gap:30px;align-items:center;justify-content:space-between;padding:14px 20px;font:13px 'DM Sans',sans-serif;background:var(--paper,#f7f6f2);color:#29282c;border-radius:3px;text-decoration:none}.ds-light svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.4}.ds-light:hover{background:#ded8ff}.ds-light:focus-visible{outline:2px solid var(--purple,#7165ed);outline-offset:6px}"
+    },
+    {
+      "name": "Text link",
+      "kind": "button",
+      "description": "Editorial link between related sections.",
+      "html": "<a class=\"ds-link\" href=\"#assets\">Discover our asset types <span aria-hidden=\"true\">→</span></a>",
+      "css": ".ds-link{display:inline-flex;align-items:center;justify-content:space-between;gap:24px;min-height:44px;font:13px 'DM Sans',sans-serif;color:#5140c5;text-decoration:none}.ds-link:hover{color:#25167a}.ds-link:focus-visible{outline:2px solid var(--purple,#7165ed);outline-offset:6px}"
+    },
+    {
+      "name": "Floating navigation",
+      "kind": "nav",
+      "refersTo": "navigation",
+      "description": "Compact sample of the navigation and active location.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Main navigation\"><a class=\"ds-brand\" href=\"#home\">meu</a><a aria-current=\"location\" href=\"#home\">Home</a><a href=\"#assets\">Our assets</a><a href=\"#platform\">Platform</a></nav>",
+      "css": ".ds-nav{display:flex;align-items:center;flex-wrap:wrap;gap:25px;padding:23px 27px;background:rgba(29,29,30,.94);backdrop-filter:blur(16px);color:#fff;border-radius:4px;box-shadow:0 6px 30px #00000012;font:14px 'DM Sans',sans-serif}.ds-nav a{color:inherit;text-decoration:none;padding:5px 0;transition:color .2s}.ds-nav .ds-brand{font-size:24px;font-weight:650;letter-spacing:-.04em}.ds-nav a:hover,.ds-nav a[aria-current]{color:#a79cff}.ds-nav a:focus-visible{outline:2px solid var(--purple,#7165ed);outline-offset:6px}@media(prefers-reduced-motion:reduce){.ds-nav a{transition:none}}"
+    },
+    {
+      "name": "Selected application tab",
+      "kind": "custom",
+      "refersTo": "application-tab-selected",
+      "description": "Selected appearance; the page supplies keyboard and panel behavior.",
+      "html": "<div class=\"ds-tabs\" role=\"tablist\" aria-label=\"Asset applications\"><button role=\"tab\" aria-selected=\"true\">Fixed-income notes <span aria-hidden=\"true\">↗</span></button></div>",
+      "css": ".ds-tabs{display:flex;border-bottom:1px solid var(--line,#d7d5d1)}.ds-tabs button{display:flex;justify-content:space-between;gap:30px;flex:1;padding:20px 25px;background:transparent;border:0;border-bottom:2px solid var(--purple,#7165ed);font:16px 'DM Sans',sans-serif;text-align:left;color:#6557df;cursor:pointer}.ds-tabs button:hover{background:#ebe9e4}.ds-tabs button:focus-visible{outline:2px solid var(--purple,#7165ed);outline-offset:6px}"
+    },
+    {
+      "name": "Demo workflow rows",
+      "kind": "card",
+      "refersTo": "demo-workspace",
+      "description": "Demo surface with current and upcoming state labels.",
+      "html": "<div class=\"ds-demo\"><ol><li class=\"ds-current\"><span class=\"ds-number\">01</span><span>Define the instrument</span><span class=\"ds-state\">Ready</span></li><li><span class=\"ds-number\">02</span><span>Verify the participant</span><span class=\"ds-state\">Upcoming</span></li></ol></div>",
+      "css": ".ds-demo{padding:25px 40px;border:1px solid var(--line,#d7d5d1);background:#faf9f6;font:14px 'DM Sans',sans-serif}.ds-demo ol{padding:0;list-style:none;margin:0}.ds-demo li{display:flex;gap:20px;align-items:center;padding:24px 0;border-bottom:1px solid var(--line,#d7d5d1);color:#6e6873}.ds-demo li.ds-current{color:#6551d3}.ds-number{font-size:11px}.ds-state{margin-left:auto;font-size:10px}"
+    }
+  ],
+  "narrative": {
+    "overview": "The user-selected Geolava reference establishes the visual direction: photographic aerial city views, generous cream editorial sections, light DM Sans headlines, and violet accents. Pixel edges, fine measurement lines, and diamond anchors connect the photographic and typographic parts of the page.\n\nThe previous CSS-generated terrain and Manrope treatment have been replaced. Visual implementation lives in `src/styles/landing.css`, structure in `src/pages/index.astro`, and interactions in `src/scripts/landing.ts`.",
+    "dos": [
+      "Do preserve alignment between the base photograph and all scanner layers.",
+      "Do carry the cream, violet, fine-line, and diamond vocabulary through related sections.",
+      "Do retain visible keyboard focus, textual workflow states, and reduced-motion behavior."
+    ],
+    "donts": [
+      "Don't replace the requested photographic landscape with CSS-generated terrain.",
+      "Don't present the scanner's false-colour imagery as measured or live asset data. Asset provenance and reuse constraints are recorded in `ASSETS.md`."
+    ]
+  }
+}

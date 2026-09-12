@@ -9,7 +9,7 @@ export interface SourceChain {
   roles: SourceChainRole[];
 }
 
-/** The Chainlink XAU/USD aggregator this desk marks its bullion book against. */
+/** A Chainlink aggregator proved from its home chain into Creditcoin. */
 export interface GoldFeed {
   chainKey: number;
   aggregator: string;
@@ -36,6 +36,7 @@ export interface CreditcoinEnvironment {
   };
   sourceChains: SourceChain[];
   goldFeed: GoldFeed;
+  reserveFeed: GoldFeed;
 }
 
 export const environments: Record<EnvironmentName, CreditcoinEnvironment> = {
@@ -65,6 +66,14 @@ export const environments: Record<EnvironmentName, CreditcoinEnvironment> = {
       description: "XAU / USD",
       decimals: 8,
       heartbeatSeconds: 86_400
+    },
+    reserveFeed: {
+      chainKey: 3,
+      aggregator: "0x9b3a984d1abbe03845CBa7A895f1ff7f4209d59c",
+      proxy: "0xaB5Dd7DD7669072a1Ef27c0ba241120A27A1aeC3",
+      description: "KAU Reserves",
+      decimals: 18,
+      heartbeatSeconds: 86_400
     }
   },
   mainnet: {
@@ -89,6 +98,14 @@ export const environments: Record<EnvironmentName, CreditcoinEnvironment> = {
       proxy: "0x214eD9Da11D2fbe465a6fc601a91E62EbEc1a0D6",
       description: "XAU / USD",
       decimals: 8,
+      heartbeatSeconds: 86_400
+    },
+    reserveFeed: {
+      chainKey: 1,
+      aggregator: "0x9b3a984d1abbe03845CBa7A895f1ff7f4209d59c",
+      proxy: "0xaB5Dd7DD7669072a1Ef27c0ba241120A27A1aeC3",
+      description: "KAU Reserves",
+      decimals: 18,
       heartbeatSeconds: 86_400
     }
   }

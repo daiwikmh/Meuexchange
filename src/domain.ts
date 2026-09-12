@@ -1,12 +1,14 @@
 export type RepoStatus = "offered" | "collateral_locked" | "funded" | "released" | "defaulted";
-export type ProofKind = "collateral_pledged" | "servicing_payment" | "collateral_released" | "price_update";
+export type ProofKind = "collateral_pledged" | "servicing_payment" | "collateral_released" | "price_update" | "reserve_update";
 export type ProofStatus = "observed" | "awaiting_attestation" | "proving" | "submitted" | "confirmed" | "failed";
 
+/** Action discriminators. Reserve proofs target ProvedGold, where 0 is its only action. */
 export const repoAction: Record<ProofKind, number> = {
   collateral_pledged: 0,
   servicing_payment: 1,
   collateral_released: 2,
-  price_update: 3
+  price_update: 3,
+  reserve_update: 0
 };
 
 /** Index 0 is the contract's `None` sentinel: the agreement has not been offered. */

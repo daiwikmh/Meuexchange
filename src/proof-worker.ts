@@ -1,6 +1,6 @@
 import { Contract, EventLog, JsonRpcProvider, Wallet } from "ethers";
-import ascRepoDeskAbi from "../contracts/abi/ASCRepoDesk.json" with { type: "json" };
 import collateralRegistryAbi from "../contracts/abi/CollateralRegistry.json" with { type: "json" };
+import provedGoldAbi from "../contracts/abi/ProvedGold.json" with { type: "json" };
 import { repoAction, type ProofKind, type ProofLedger } from "./domain.js";
 import type { CreditcoinEnvironment } from "./creditcoin.js";
 
@@ -17,18 +17,30 @@ const aggregatorAbi = [
   "event AnswerUpdated(int256 indexed current, uint256 indexed roundId, uint256 updatedAt)"
 ];
 
+/**
+ * Every readability ASC inherits one entry point from ASCBase, so a single fragment drives
+ * every target. Taken from the compiled artifact rather than hand-written: the proof's
+ * siblings arrive as {hash, isLeft} objects, and ethers cannot encode those against a
+ * signature whose tuple components are unnamed.
+ */
+const ascExecuteAbi = (provedGoldAbi as Array<{ name?: string; type: string }>).filter(
+  (fragment) => fragment.type === "function" && fragment.name === "execute"
+);
+
+export type WatchRole = "collateral" | "price" | "reserves";
+
 export interface ChainWatchConfig {
-  role: "collateral" | "price";
+  role: WatchRole;
   name: string;
   chainKey: number;
   rpcUrl: string;
   emitter: string;
+  target: string;
   fromBlock?: number;
 }
 
 export interface ProofWorkerConfig {
   environment: CreditcoinEnvironment;
-  deskAddress: string;
   privateKey: string;
   watches: ChainWatchConfig[];
 }
@@ -36,17 +48,19 @@ export interface ProofWorkerConfig {
 interface ChainWatch extends ChainWatchConfig {
   provider: JsonRpcProvider;
   contract: Contract;
+  submitTo: Contract;
   events: Array<{ event: string; kind: ProofKind }>;
   cursor: number;
 }
 
-const eventsByRole: Record<ChainWatchConfig["role"], Array<{ event: string; kind: ProofKind }>> = {
+const eventsByRole: Record<WatchRole, Array<{ event: string; kind: ProofKind }>> = {
   collateral: [
     { event: "CollateralPledged", kind: "collateral_pledged" },
     { event: "ServicingPaymentMade", kind: "servicing_payment" },
     { event: "CollateralReleased", kind: "collateral_released" }
   ],
-  price: [{ event: "AnswerUpdated", kind: "price_update" }]
+  price: [{ event: "AnswerUpdated", kind: "price_update" }],
+  reserves: [{ event: "AnswerUpdated", kind: "reserve_update" }]
 };
 
 /**
@@ -62,7 +76,6 @@ const eventsByRole: Record<ChainWatchConfig["role"], Array<{ event: string; kind
 export class ProofWorker {
   private readonly creditcoinProvider: JsonRpcProvider;
   private readonly wallet: Wallet;
-  private readonly desk: Contract;
   private readonly watches: ChainWatch[];
   private running = false;
 
@@ -74,7 +87,6 @@ export class ProofWorker {
       staticNetwork: true
     });
     this.wallet = new Wallet(config.privateKey, this.creditcoinProvider);
-    this.desk = new Contract(config.deskAddress, ascRepoDeskAbi as never, this.wallet);
 
     this.watches = config.watches.map((watch) => {
       const provider = new JsonRpcProvider(watch.rpcUrl);
@@ -83,6 +95,7 @@ export class ProofWorker {
         ...watch,
         provider,
         contract: new Contract(watch.emitter, abi, provider),
+        submitTo: new Contract(watch.target, ascExecuteAbi as never, this.wallet),
         events: eventsByRole[watch.role],
         cursor: watch.fromBlock ?? 0
       };
@@ -102,9 +115,9 @@ export class ProofWorker {
     for (const watch of this.watches) {
       if (!watch.cursor) watch.cursor = await watch.provider.getBlockNumber();
       console.log(`[worker] ${watch.role} · ${watch.name} (chainKey ${watch.chainKey}) from block ${watch.cursor}`);
-      console.log(`[worker]   emitter ${watch.emitter}`);
+      console.log(`[worker]   emitter ${watch.emitter}  →  ${watch.target}`);
     }
-    console.log(`[worker] proving into ${this.config.deskAddress} as ${this.wallet.address}`);
+    console.log(`[worker] submitting as ${this.wallet.address}`);
 
     while (this.running) {
       for (const watch of this.watches) {
@@ -148,7 +161,8 @@ export class ProofWorker {
   }
 
   private async prove(watch: ChainWatch, log: EventLog, kind: ProofKind) {
-    const agreementId = kind === "price_update" ? `${PRICE_AGREEMENT_KEY}:${log.topics[2]}` : log.topics[1];
+    const feedKey = kind === "price_update" ? PRICE_AGREEMENT_KEY : "gold-reserves";
+    const agreementId = kind === "price_update" || kind === "reserve_update" ? `${feedKey}:${log.topics[2]}` : log.topics[1];
     const record = this.ledger.observe({
       agreementId,
       kind,
@@ -162,8 +176,8 @@ export class ProofWorker {
       const proof = await this.buildProof(watch, log.transactionHash, log.blockNumber);
 
       this.ledger.advance(record.id, "proving");
-      const gasLimit = await this.estimateGas(kind, proof);
-      const response = await this.desk.execute(
+      const gasLimit = await this.estimateGas(watch, kind, proof);
+      const response = await watch.submitTo.execute(
         repoAction[kind],
         proof.chainKey,
         proof.headerNumber,
@@ -204,8 +218,8 @@ export class ProofWorker {
     return proof as ContinuityProof;
   }
 
-  private async estimateGas(kind: ProofKind, proof: ContinuityProof) {
-    const data = this.desk.interface.encodeFunctionData("execute", [
+  private async estimateGas(watch: ChainWatch, kind: ProofKind, proof: ContinuityProof) {
+    const data = watch.submitTo.interface.encodeFunctionData("execute", [
       repoAction[kind],
       proof.chainKey,
       proof.headerNumber,
@@ -218,7 +232,7 @@ export class ProofWorker {
 
     try {
       const estimate = await this.creditcoinProvider.estimateGas({
-        to: this.config.deskAddress,
+        to: watch.target,
         data,
         from: this.wallet.address
       });

@@ -100,6 +100,37 @@ Both proof transactions carry two logs: one from the block-prover precompile at 
 from the desk. That pairing is the design — the proof is verified and acted on in a single
 transaction, so there is no window in which an unverified fact sits in contract storage.
 
+### Reserve-gated issuance
+
+`ProvedGold` is a Creditcoin-native gold token whose supply is capped by reserves the issuer does
+not control. `provedReserves` only moves when a Chainlink Proof-of-Reserve round from Ethereum is
+verified here by the block-prover precompile:
+
+```solidity
+issue(to, grams)  requires  totalSupply() + grams <= provedReserves
+```
+
+| Step | Result |
+|---|---|
+| `issue` before any reserve proof | reverts `NoReservesProved()` — the token cannot exist before a proof does |
+| KAU Reserves round proved from mainnet | [`0xecd04c2c…7ef1`](https://creditcoin-testnet.blockscout.com/tx/0xecd04c2c2c64c53165cb186ed2623a36a16454f727eedece3593287565817ef1) — `ReservesProved(2567133466…, 201, …)` |
+| `issue` 1,000 g | [`0xd3509d0e…7664`](https://creditcoin-testnet.blockscout.com/tx/0xd3509d0ee456b875d574f8bc49a50238902d65c6d7c9a6a6565048d386687664) |
+| `issue` 1 g past headroom | reverts `ExceedsProvedReserves(2566134…, 2566133466…)` |
+
+2,567,133.466 grams (82,535 troy oz) is the figure Chainlink's `KAU Reserves` feed actually
+reports on Ethereum mainnet. Creditcoin cannot see that feed; Attestcoin proves it. The issuer
+would have to compromise Chainlink's feed rather than their own contract to mint past it.
+
+**This does not audit the vault.** It proves the feed *said* that number, and removes the relay
+and the issuer's self-report from the trust path. The auditor remains trusted. The KAU feed also
+attests Kinesis's vault, so the demo models an issuer whose reserves that feed reports — a
+stand-in in the way `TestBullion` stands in for PAXG. In production an issuer commissions their
+own PoR feed and only the bound address changes.
+
+The token is denominated in grams to match the feed exactly, so the safety-critical cap needs no
+unit arithmetic; the gram-to-troy-ounce conversion lives in the pricing path, where a rounding
+error costs basis points instead of breaking the supply cap.
+
 ### Deployed addresses
 
 | Contract | Chain | Address |
@@ -107,6 +138,12 @@ transaction, so there is no window in which an unverified fact sits in contract 
 | `ASCRepoDesk` | Creditcoin Testnet | `0x0231762F2F2285F6ea27Ad456E144C1371e4AF3B` |
 | `CollateralRegistry` | Ethereum Sepolia | `0x3A053Dbffb16C033eF16eBcD4dE45673BE3346d4` |
 | `TestBullion` (tXAU) | Ethereum Sepolia | `0x626DA908bdE6F66f9178B3128dd17D82dc74CE21` |
+| `ProvedGold` (pGOLD) | Creditcoin Testnet | `0x2a8142Db4C3b90333339A6E25b225e808098BDB0` |
+
+Two Chainlink aggregators on Ethereum mainnet, proved through one protocol into two contracts:
+`XAU / USD` (`0x0e3dd634…f903`) marks the repo book, `KAU Reserves` (`0x9b3a984d…d59c`) caps gold
+issuance. Each watch names its own target, and since both contracts inherit `execute` from
+`ASCBase`, one ABI fragment drives both.
 
 ## Setup
 
@@ -202,6 +239,9 @@ a participant wallet through the MetaMask SDK. It never receives a private key.
   bound emitter. `registerPriceAggregator` is set-once, so a migration needs a new desk deployment.
 - **Proof decoding is not unit-tested against real RLP.** The Solidity tests exercise the log
   handlers with constructed `ReceiptFields`; the RLP decode path is exercised on testnet.
+- **Watches sweep sequentially.** One watch with a large backfill range starves the others: a
+  3,800-block price backfill in 50-block chunks is 76 sequential RPC calls before the reserve
+  watch gets a turn. Per-watch concurrency is the fix; advancing the cursor is only a workaround.
 - **Proof-pipeline state is in memory.** The ledger's dedupe does not survive a worker restart,
   so `PRICE_FROM_BLOCK` must be advanced past an already-proved round or the worker resubmits a
   proof the desk rejects as stale, wasting gas on a guaranteed revert. Persisting the ledger is

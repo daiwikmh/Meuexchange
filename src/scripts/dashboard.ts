@@ -29,7 +29,19 @@ function showMessage(message: string) {
   alertBox.hidden = false;
 }
 
+const pages: Record<string, { eyebrow: string; title: string }> = {
+  overview: { eyebrow: 'MEU EXCHANGE / OVERVIEW', title: 'Proved bullion<br /><em>priced on-chain.</em>' },
+  attest: { eyebrow: 'MEU EXCHANGE / ATTESTCOIN', title: 'Proved, not<br /><em>reported.</em>' },
+  lifecycle: { eyebrow: 'MEU EXCHANGE / REPO LIFECYCLE', title: 'From bullion<br /><em>to credit.</em>' },
+  proofs: { eyebrow: 'MEU EXCHANGE / PROOF QUEUE', title: 'Every fact.<br /><em>Every proof.</em>' }
+};
+
 function activateTab(name: string) {
+  const page = pages[name];
+  if (page) {
+    root.querySelector('#page-eyebrow')!.textContent = page.eyebrow;
+    root.querySelector('#page-title')!.innerHTML = page.title;
+  }
   tabs.forEach((tab) => {
     const active = tab.dataset.tab === name;
     tab.classList.toggle('active', active);
@@ -85,6 +97,24 @@ function render(payload: DashboardPayload) {
   setText('[data-count="funded"]', countByStatus(payload, ['funded']));
   setText('[data-count="closed"]', countByStatus(payload, ['released', 'defaulted']));
   root.querySelector('#sync-status')!.innerHTML = '<i></i> API connected';
+
+  const facts = root.querySelector('#header-facts');
+  if (facts) {
+    const collateral = payload.attestcoin.chains.find((chain) => chain.role === 'collateral');
+    const rows = [
+      { label: 'NETWORK', value: `${payload.creditcoin.network} · ${payload.creditcoin.chainId}` },
+      { label: 'ASC REPO DESK', value: payload.contracts.ascRepoDesk, link: payload.contracts.ascRepoDesk ? `${payload.creditcoin.explorerUrl}/address/${payload.contracts.ascRepoDesk}` : null },
+      { label: 'COLLATERAL REGISTRY', value: payload.contracts.collateralRegistry, link: payload.contracts.collateralRegistry ? `https://sepolia.etherscan.io/address/${payload.contracts.collateralRegistry}` : null },
+      { label: 'XAU / USD', value: payload.goldPrice ? `${usd(payload.goldPrice.answer, payload.goldFeed.decimals)} · round ${payload.goldPrice.roundId}` : null },
+      { label: 'ATTESTED SOURCE', value: collateral?.attestedHeight ? `${collateral.name} ${collateral.attestedHeight}` : null },
+      { label: 'PROOF WORKER', value: payload.mode === 'proving' ? 'Proving' : 'Read-only' }
+    ];
+    facts.innerHTML = rows.map((row) => {
+      const shown = row.value ? (row.value.startsWith('0x') ? shortHash(row.value) : row.value) : 'not configured';
+      const body = row.link ? `<a href="${row.link}" target="_blank" rel="noreferrer">${escapeHtml(shown)} ↗</a>` : escapeHtml(shown);
+      return `<div class="header-fact${row.value ? '' : ' muted'}"><span>${row.label}</span><strong>${body}</strong></div>`;
+    }).join('');
+  }
 
   const chainLines = root.querySelector('#chain-lines');
   if (chainLines) {

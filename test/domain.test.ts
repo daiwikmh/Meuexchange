@@ -25,6 +25,7 @@ const config: AppConfig = {
   environment: testnet,
   collateral: { role: "collateral", name: "Ethereum Sepolia", chainKey: 1, emitter: registryAddress },
   price: { role: "price", name: "Ethereum Mainnet", chainKey: 3, emitter: testnet.goldFeed.aggregator },
+  reserves: { role: "reserves", name: "Ethereum Mainnet", chainKey: 3, emitter: testnet.reserveFeed.aggregator },
   deskAddress
 };
 
@@ -68,26 +69,53 @@ test("the gold feed points at the aggregator, not the proxy", () => {
   assert.equal(testnet.goldFeed.decimals, 8);
 });
 
-test("price updates map to their own ASC action", () => {
+test("each proof kind maps to its target contract's action", () => {
   assert.deepEqual(repoAction, {
     collateral_pledged: 0,
     servicing_payment: 1,
     collateral_released: 2,
-    price_update: 3
+    price_update: 3,
+    reserve_update: 0
   });
+  // reserve_update shares action 0 with collateral_pledged, but lands on ProvedGold rather
+  // than the desk, so the collision is only apparent -- the watch's target disambiguates it.
+  assert.equal(repoAction.reserve_update, 0);
 });
 
-test("the worker watches both chains when both RPCs are configured", () => {
+test("the worker watches every configured chain and routes each to its own contract", () => {
+  const goldAddress = "0x5555555555555555555555555555555555555555";
   const built = buildWorkerConfig({
     ...config,
+    goldAddress,
     collateral: { ...config.collateral, rpcUrl: "https://sepolia.example" },
     price: { ...config.price, rpcUrl: "https://mainnet.example" },
+    reserves: { ...config.reserves, rpcUrl: "https://mainnet.example" },
     workerPrivateKey: `0x${"11".repeat(32)}`
   });
 
-  assert.equal(built?.watches.length, 2);
-  assert.deepEqual(built?.watches.map((watch) => watch.role), ["collateral", "price"]);
+  assert.deepEqual(built?.watches.map((watch) => watch.role), ["collateral", "price", "reserves"]);
   assert.equal(built?.watches[1].emitter, testnet.goldFeed.aggregator);
+  assert.equal(built?.watches[1].target, deskAddress);
+  assert.equal(built?.watches[2].emitter, testnet.reserveFeed.aggregator);
+  assert.equal(built?.watches[2].target, goldAddress, "reserve proofs must drive the gold token");
+});
+
+test("the ASCBase execute fragment names its tuple components", async () => {
+  // The proof builder returns siblings as {hash, isLeft} objects. ethers can only encode those
+  // against named tuple components, so a hand-written signature silently breaks submission.
+  const { default: abi } = await import("../contracts/abi/ProvedGold.json", { with: { type: "json" } });
+  const execute = (abi as Array<{ name?: string; type: string; inputs?: Array<{ name: string; components?: Array<{ name: string }> }> }>)
+    .find((fragment) => fragment.type === "function" && fragment.name === "execute");
+  const siblings = execute?.inputs?.find((input) => input.name === "siblings");
+
+  assert.deepEqual(siblings?.components?.map((component) => component.name), ["hash", "isLeft"]);
+});
+
+test("the reserve feed is a different aggregator from the price feed", () => {
+  assert.notEqual(testnet.reserveFeed.aggregator, testnet.goldFeed.aggregator);
+  assert.equal(testnet.reserveFeed.description, "KAU Reserves");
+  assert.equal(testnet.reserveFeed.decimals, 18);
+  assert.notEqual(testnet.reserveFeed.aggregator, testnet.reserveFeed.proxy);
 });
 
 test("the worker skips a chain whose RPC is missing", () => {

@@ -3,7 +3,7 @@ import { chainsForRole, resolveEnvironment, type CreditcoinEnvironment } from ".
 export type Mode = "read-only" | "proving";
 
 export interface WatchedChain {
-  role: "collateral" | "price";
+  role: "collateral" | "price" | "reserves";
   name: string;
   chainKey: number;
   rpcUrl?: string;
@@ -16,10 +16,13 @@ export interface AppConfig {
   environment: CreditcoinEnvironment;
   collateral: WatchedChain;
   price: WatchedChain;
+  reserves: WatchedChain;
   deskAddress?: string;
+  goldAddress?: string;
   workerPrivateKey?: string;
   workerFromBlock?: number;
   priceFromBlock?: number;
+  reserveFromBlock?: number;
 }
 
 /** Treats an empty environment variable as unset, so `.env` placeholders do not win over defaults. */
@@ -50,6 +53,14 @@ export function loadConfig(): AppConfig {
     emitter: env("GOLD_AGGREGATOR_ADDRESS") ?? environment.goldFeed.aggregator
   };
 
+  const reserves: WatchedChain = {
+    role: "reserves",
+    name: priceChain.name,
+    chainKey: environment.goldFeed.chainKey,
+    rpcUrl: env("PRICE_CHAIN_RPC_URL"),
+    emitter: env("RESERVE_FEED_ADDRESS") ?? environment.reserveFeed.aggregator
+  };
+
   const workerPrivateKey = env("PROOF_WORKER_PRIVATE_KEY");
   const deskAddress = env("ASC_REPO_DESK_ADDRESS");
   const proving = Boolean(workerPrivateKey && collateral.rpcUrl && collateral.emitter && deskAddress);
@@ -60,9 +71,12 @@ export function loadConfig(): AppConfig {
     environment,
     collateral,
     price,
+    reserves,
     deskAddress,
+    goldAddress: env("PROVED_GOLD_ADDRESS"),
     workerPrivateKey,
     workerFromBlock: env("WORKER_FROM_BLOCK") ? Number(env("WORKER_FROM_BLOCK")) : undefined,
-    priceFromBlock: env("PRICE_FROM_BLOCK") ? Number(env("PRICE_FROM_BLOCK")) : undefined
+    priceFromBlock: env("PRICE_FROM_BLOCK") ? Number(env("PRICE_FROM_BLOCK")) : undefined,
+    reserveFromBlock: env("RESERVE_FROM_BLOCK") ? Number(env("RESERVE_FROM_BLOCK")) : undefined
   };
 }

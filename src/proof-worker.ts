@@ -198,7 +198,11 @@ export class ProofWorker {
       });
     } catch (error) {
       this.ledger.advance(record.id, "failed", { detail: message(error) });
-      console.error(`[worker] ${kind} proof failed for ${log.transactionHash}:`, message(error));
+      if (error instanceof ProofRejected) {
+        console.warn(`[worker] ${kind} skipped for ${log.transactionHash}: ${message(error)} (not submitted)`);
+      } else {
+        console.error(`[worker] ${kind} proof failed for ${log.transactionHash}:`, message(error));
+      }
     }
   }
 
@@ -238,10 +242,15 @@ export class ProofWorker {
       });
       return (estimate * GAS_BUFFER_PERCENT) / 100n;
     } catch (error) {
-      // pallet-evm does not always surface precompile reverts during estimation, so fall back
-      // to a size-derived limit rather than abandoning a proof that would succeed.
+      // A decodable revert means the call will fail however much gas it is given -- a replayed
+      // query, a stale round, an unregistered feed. Submitting anyway just pays for a revert.
+      const reverted = revertReason(error);
+      if (reverted) throw new ProofRejected(reverted);
+
+      // pallet-evm does not always surface precompile reverts during estimation, so an
+      // indeterminate failure still falls back rather than abandoning a proof that would succeed.
       const continuityBlocks = proof.continuityProof.roots?.length || 1;
-      console.warn(`[worker] gas estimation failed (${message(error)}); using size-derived limit`);
+      console.warn(`[worker] gas estimation inconclusive (${message(error)}); using size-derived limit`);
       return BigInt(21_000 + continuityBlocks * 5_000 + 20_000);
     }
   }
@@ -253,6 +262,16 @@ interface ContinuityProof {
   txBytes: string;
   merkleProof: { root: string; siblings: Array<{ hash: string; isLeft: boolean }> };
   continuityProof: { lowerEndpointDigest: string; roots: string[] };
+}
+
+/** A proof the chain will definitely reject. Submitting it would only burn gas. */
+class ProofRejected extends Error {}
+
+function revertReason(error: unknown): string | null {
+  const candidate = error as { data?: string; shortMessage?: string; info?: { error?: { message?: string } } };
+  const text = candidate?.info?.error?.message ?? candidate?.shortMessage ?? "";
+  if (candidate?.data && candidate.data !== "0x") return text || "execution reverted";
+  return /execution reverted/i.test(text) ? text : null;
 }
 
 function delay(ms: number) {

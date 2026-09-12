@@ -131,6 +131,41 @@ The token is denominated in grams to match the feed exactly, so the safety-criti
 unit arithmetic; the gram-to-troy-ounce conversion lives in the pricing path, where a rounding
 error costs basis points instead of breaking the supply cap.
 
+### Listing a second asset: silver
+
+Listing an RWA is configuration, not new code. Silver was listed end to end against two feeds
+Chainlink already operates on Ethereum, with nothing invented:
+
+| | Feed | Value proved onto Creditcoin |
+|---|---|---|
+| Price | `XAG / USD` `0xB38d1D12…A50d` | $64.486 / troy oz, round 29850 |
+| Reserves | `KAG Reserves` `0x3B4f49f4…AAAc` | 3,688,827.985 g of vaulted silver, round 203 |
+
+```
+issue 5,000 g pSILVER   0x0b8d7114…115b
+fund the window         0xc644fc63…22b7
+buy 100 g               0xbb122fab…aa5d
+                        Bought(buyer, 100e18, 208363940, 29850)
+```
+
+$64.486/oz ÷ 31.1034768 g = $2.073273/gram, and the fill carries round 29850 — the same
+auditable link back to a proved Chainlink round that the gold window provides.
+
+Three generalisations made that possible:
+
+- **`ProvedPriceOracle`** — one ASC proving any number of registered aggregators, keyed by the
+  emitting aggregator. Listing a price feed is `registerAggregator(...)`, one transaction.
+- **`ProvedMetal`** — name, symbol and reserve aggregator are constructor arguments, so an asset
+  with a Proof-of-Reserve feed lists without new code.
+- **`MetalWindow`** — the price aggregator is a constructor argument, and it reads both tokens'
+  decimals rather than assuming them.
+
+The worker reads `LISTED_FEEDS` from the environment, so adding an asset's feeds is a config
+entry naming an aggregator and the contract that consumes its rounds.
+
+**There is no CTC/USD feed on Chainlink.** Quoting in a USD token is therefore forced, not a
+shortcut: no provable way to price metal in tCTC exists today.
+
 ### Deployed addresses
 
 | Contract | Chain | Address |
@@ -139,6 +174,11 @@ error costs basis points instead of breaking the supply cap.
 | `CollateralRegistry` | Ethereum Sepolia | `0x3A053Dbffb16C033eF16eBcD4dE45673BE3346d4` |
 | `TestBullion` (tXAU) | Ethereum Sepolia | `0x626DA908bdE6F66f9178B3128dd17D82dc74CE21` |
 | `ProvedGold` (pGOLD) | Creditcoin Testnet | `0x2a8142Db4C3b90333339A6E25b225e808098BDB0` |
+| `TestUSD` (tUSD) | Creditcoin Testnet | `0x63b8493f7508Bea15b5D29A369E74D99Ac8932d6` |
+| `GoldWindow` | Creditcoin Testnet | `0x2369B00a916132cBD3639bB29353d062f5fF325a` |
+| `ProvedPriceOracle` | Creditcoin Testnet | `0x9B6eB52D26CeF7b04bb52b307Db86262bD8D6C8A` |
+| `ProvedMetal` (pSILVER) | Creditcoin Testnet | `0x74f6E83aA79a16CeD41Ec5b0697879E51e81cAd0` |
+| `MetalWindow` (silver) | Creditcoin Testnet | `0x2BE77D62F16438ce44c41120846321d871b73806` |
 
 Two Chainlink aggregators on Ethereum mainnet, proved through one protocol into two contracts:
 `XAU / USD` (`0x0e3dd634…f903`) marks the repo book, `KAU Reserves` (`0x9b3a984d…d59c`) caps gold
@@ -239,6 +279,8 @@ a participant wallet through the MetaMask SDK. It never receives a private key.
   bound emitter. `registerPriceAggregator` is set-once, so a migration needs a new desk deployment.
 - **Proof decoding is not unit-tested against real RLP.** The Solidity tests exercise the log
   handlers with constructed `ReceiptFields`; the RLP decode path is exercised on testnet.
+- **Run one worker.** Two instances prove the same events twice; the duplicate is rejected by
+  `ASCBase` deduplication, but only after paying for a reverted transaction.
 - **Watches sweep sequentially.** One watch with a large backfill range starves the others: a
   3,800-block price backfill in 50-block chunks is 76 sequential RPC calls before the reserve
   watch gets a turn. Per-watch concurrency is the fix; advancing the cursor is only a workaround.

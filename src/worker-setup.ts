@@ -47,6 +47,20 @@ export function buildWorkerConfig(config: AppConfig): ProofWorkerConfig | null {
     });
   }
 
+  // Every listed asset's feed rides the same proof path; only its target differs.
+  for (const feed of config.listedFeeds) {
+    if (!config.price.rpcUrl) break;
+    watches.push({
+      role: "reserves",
+      name: feed.name,
+      chainKey: config.price.chainKey,
+      rpcUrl: config.price.rpcUrl,
+      emitter: feed.aggregator,
+      target: feed.target,
+      fromBlock: feed.fromBlock
+    });
+  }
+
   if (!watches.length) return null;
 
   return { environment: config.environment, privateKey: config.workerPrivateKey, watches };

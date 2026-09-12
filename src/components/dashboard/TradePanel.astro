@@ -1,0 +1,28 @@
+<section class="trade-grid" aria-label="Gold market">
+  <article class="surface chart-surface">
+    <div class="surface-heading">
+      <div><span class="eyebrow">XAU / USD · MARKET REFERENCE</span><h3>Spot gold</h3></div>
+      <span class="chart-note">TradingView feed — not the proved price</span>
+    </div>
+    <div class="chart-frame"><div id="tv-gold"></div></div>
+    <div class="chart-compare">
+      <div><span>PROVED ROUND</span><strong data-metric="spot">—</strong></div>
+      <div><span>DEALING MID</span><strong id="window-mid">—</strong></div>
+      <div><span>BUY / SELL</span><strong id="window-quote">—</strong></div>
+    </div>
+  </article>
+
+  <article class="surface trade-surface">
+    <div class="surface-heading"><div><span class="eyebrow">DEALING WINDOW</span><h3>Buy &amp; sell</h3></div></div>
+    <p class="trade-copy">Fills execute at the last proved Chainlink round, never at an operator's quote. Each fill records the round id.</p>
+    <label class="trade-field">Grams
+      <input id="trade-grams" type="number" min="0" step="0.1" value="5" />
+    </label>
+    <div class="trade-preview"><span>You pay / receive</span><strong id="trade-preview">—</strong></div>
+    <div class="trade-actions">
+      <button id="trade-buy" class="primary-button">Buy gold <span aria-hidden="true">↗</span></button>
+      <button id="trade-sell" class="quiet-button outline">Sell gold</button>
+    </div>
+    <div class="trade-inventory"><span>WINDOW INVENTORY</span><strong id="window-inventory">—</strong></div>
+  </article>
+</section>

@@ -106,6 +106,40 @@ export class RepoDeskGateway implements RepoDeskReader {
     return Number(latest.height);
   }
 
+  /** Live state of the dealing window, when one is configured. */
+  async market() {
+    const windowAddress = process.env.GOLD_WINDOW_ADDRESS;
+    const usdAddress = process.env.TEST_USD_ADDRESS;
+    const goldAddress = process.env.PROVED_GOLD_ADDRESS;
+    if (!this.provider || !windowAddress || !usdAddress || !goldAddress) return null;
+
+    const { default: goldWindowAbi } = await import("../contracts/abi/GoldWindow.json", { with: { type: "json" } });
+    const erc20 = ["function balanceOf(address) view returns (uint256)"];
+    const win = new Contract(windowAddress, goldWindowAbi as never, this.provider);
+    const base = {
+      window: windowAddress,
+      usd: usdAddress,
+      gold: goldAddress,
+      goldInventory: (await new Contract(goldAddress, erc20, this.provider).balanceOf(windowAddress)).toString(),
+      usdInventory: (await new Contract(usdAddress, erc20, this.provider).balanceOf(windowAddress)).toString(),
+      spreadBps: Number(await win.spreadBps())
+    };
+
+    try {
+      const oneGram = 10n ** 18n;
+      const [buyUsd, sellUsd] = await win.quote(oneGram);
+      return {
+        ...base,
+        midUsdPerGram: (await win.midUsdPerGram()).toString(),
+        buyUsdPerGram: buyUsd.toString(),
+        sellUsdPerGram: sellUsd.toString()
+      };
+    } catch {
+      // A stale or absent proved round closes the window; inventory is still worth showing.
+      return { ...base, midUsdPerGram: null, buyUsdPerGram: null, sellUsdPerGram: null };
+    }
+  }
+
   offerTerms(input: {
     agreementId: string;
     borrowerPayout: string;

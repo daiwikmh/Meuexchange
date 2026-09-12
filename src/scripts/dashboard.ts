@@ -1,4 +1,8 @@
 import { MetaMaskSDK } from '@metamask/sdk';
+import { BrowserProvider, Contract, formatUnits, parseUnits } from 'ethers';
+import goldWindowAbi from '../../contracts/abi/GoldWindow.json' with { type: 'json' };
+import testUsdAbi from '../../contracts/abi/TestUSD.json' with { type: 'json' };
+import provedGoldAbi from '../../contracts/abi/ProvedGold.json' with { type: 'json' };
 
 type AgreementStatus = 'offered' | 'collateral_locked' | 'funded' | 'released' | 'defaulted';
 
@@ -11,6 +15,7 @@ type DashboardPayload = {
   attestcoin: { proofBuilderUrl: string; blockProverPrecompile: string; chains: AttestedChain[] };
   goldFeed: { description: string; aggregator: string; decimals: number; chainKey: number };
   goldPrice: { answer: string; roundId: number; updatedAt: string; stale: boolean } | null;
+  market: { window: string | null; usd: string | null; gold: string | null; midUsdPerGram: string | null; buyUsdPerGram: string | null; sellUsdPerGram: string | null; goldInventory: string | null; usdInventory: string | null; spreadBps: number | null } | null;
   contracts: { ascRepoDesk: string | null; collateralRegistry: string | null };
   agreements: Array<{ id: string; status: AgreementStatus; principal: string; principalUsd: string; repaid: string; requiredRepayment: string; maturityAt: string; marginCalled: boolean; collateralValueUsd?: string; ltvBps?: number }>;
   proofs: Array<{ id: string; kind: string; status: string; sourceTxHash: string; creditcoinTxHash?: string; observedAt: string }>;
@@ -116,6 +121,17 @@ function render(payload: DashboardPayload) {
     }).join('');
   }
 
+  const market = payload.market;
+  const money = (value: string | null, unit = '') => (value ? `$${Number(formatUnits(value, 6)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${unit}` : '—');
+  setText('#window-mid', market?.midUsdPerGram ? `${money(market.midUsdPerGram)} / g` : 'window closed');
+  setText('#window-quote', market?.buyUsdPerGram ? `${money(market.buyUsdPerGram)} / ${money(market.sellUsdPerGram)}` : '—');
+  setText('#window-inventory', market?.goldInventory
+    ? `${Number(formatUnits(market.goldInventory, 18)).toLocaleString('en-US')} g · ${money(market.usdInventory)}`
+    : 'not funded');
+  quotePerGram = market?.buyUsdPerGram ?? null;
+  sellPerGram = market?.sellUsdPerGram ?? null;
+  updateTradePreview();
+
   const chainLines = root.querySelector('#chain-lines');
   if (chainLines) {
     chainLines.innerHTML = payload.attestcoin.chains.map((chain) => `<div class="readiness-line"><span><i class="ready-dot"></i> ${escapeHtml(chain.name)} · key ${chain.chainKey}</span><strong>${chain.attestedHeight ?? '—'}</strong></div>`).join('');
@@ -187,6 +203,68 @@ walletDialogButton.addEventListener('click', connectWallet);
 root.querySelector('[data-close-wallet]')!.addEventListener('click', () => { walletDialog.hidden = true; });
 walletDialog.addEventListener('click', (event) => { if (event.target === walletDialog) walletDialog.hidden = true; });
 
+let quotePerGram: string | null = null;
+let sellPerGram: string | null = null;
+
+function gramsInput() {
+  return Number((root.querySelector('#trade-grams') as HTMLInputElement | null)?.value ?? '0');
+}
+
+function updateTradePreview() {
+  const grams = gramsInput();
+  const target = root.querySelector('#trade-preview');
+  if (!target) return;
+  if (!quotePerGram || !sellPerGram || !Number.isFinite(grams) || grams <= 0) {
+    target.textContent = '—';
+    return;
+  }
+  const buy = (Number(formatUnits(quotePerGram, 6)) * grams).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sell = (Number(formatUnits(sellPerGram, 6)) * grams).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  target.textContent = `$${buy}  /  $${sell}`;
+}
+
+root.querySelector('#trade-grams')?.addEventListener('input', updateTradePreview);
+
+async function trade(side: 'buy' | 'sell') {
+  const market = snapshot?.market;
+  if (!market?.window) throw new Error('The dealing window is not configured');
+  if (!walletAccount) throw new Error('Connect a wallet to trade');
+  const grams = gramsInput();
+  if (!Number.isFinite(grams) || grams <= 0) throw new Error('Enter a positive number of grams');
+
+  const eip1193 = sdk.getProvider();
+  if (!eip1193) throw new Error('No wallet provider available');
+  const signer = await new BrowserProvider(eip1193 as never).getSigner();
+  const amount = parseUnits(String(grams), 18);
+  const win = new Contract(market.window, goldWindowAbi as never, signer);
+
+  if (side === 'buy') {
+    const [buyUsd] = await win.quote(amount);
+    const usd = new Contract(market.usd!, testUsdAbi as never, signer);
+    await (await usd.approve(market.window, buyUsd)).wait();
+    const tx = await win.buy(amount);
+    showMessage(`Buy submitted at the proved round: ${tx.hash}`);
+    await tx.wait();
+  } else {
+    const gold = new Contract(market.gold!, provedGoldAbi as never, signer);
+    await (await gold.approve(market.window, amount)).wait();
+    const tx = await win.sell(amount);
+    showMessage(`Sell submitted at the proved round: ${tx.hash}`);
+    await tx.wait();
+  }
+  await refresh();
+}
+
+for (const side of ['buy', 'sell'] as const) {
+  root.querySelector(`#trade-${side}`)?.addEventListener('click', async () => {
+    const button = root.querySelector<HTMLButtonElement>(`#trade-${side}`)!;
+    button.disabled = true;
+    try { await trade(side); }
+    catch (error) { showMessage(error instanceof Error ? error.message : `Could not ${side} gold`); }
+    finally { button.disabled = false; }
+  });
+}
+
 function randomAgreementId() {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return `0x${[...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
@@ -225,6 +303,27 @@ root.querySelector('#prepare-terms')!.addEventListener('click', async () => {
   finally { button.disabled = false; }
 });
 
+function mountChart() {
+  if (!root.getElementById('tv-gold')) return;
+  const script = document.createElement('script');
+  script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+  script.async = true;
+  script.innerHTML = JSON.stringify({
+    symbol: 'OANDA:XAUUSD',
+    interval: '60',
+    theme: 'light',
+    style: '2',
+    locale: 'en',
+    hide_top_toolbar: true,
+    hide_legend: false,
+    allow_symbol_change: false,
+    save_image: false,
+    autosize: true
+  });
+  root.getElementById('tv-gold')!.appendChild(script);
+}
+
+mountChart();
 refresh();
 
 export const dashboardReady = true;

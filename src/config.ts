@@ -10,6 +10,14 @@ export interface WatchedChain {
   emitter?: string;
 }
 
+/** A listed asset's feed: which aggregator to prove, and which contract consumes it. */
+export interface ListedFeed {
+  name: string;
+  aggregator: string;
+  target: string;
+  fromBlock?: number;
+}
+
 export interface AppConfig {
   mode: Mode;
   port: number;
@@ -23,12 +31,28 @@ export interface AppConfig {
   workerFromBlock?: number;
   priceFromBlock?: number;
   reserveFromBlock?: number;
+  listedFeeds: ListedFeed[];
 }
 
 /** Treats an empty environment variable as unset, so `.env` placeholders do not win over defaults. */
 function env(name: string) {
   const value = process.env[name];
   return value && value.trim() ? value.trim() : undefined;
+}
+
+/**
+ * Listing an asset is configuration, not a deployment: each entry names an aggregator on an
+ * attested chain and the contract that consumes its proved rounds.
+ */
+function parseListedFeeds(): ListedFeed[] {
+  const raw = env("LISTED_FEEDS");
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as ListedFeed[];
+    return parsed.filter((feed) => feed.aggregator && feed.target);
+  } catch (error) {
+    throw new Error(`LISTED_FEEDS is not valid JSON: ${error instanceof Error ? error.message : error}`);
+  }
 }
 
 export function loadConfig(): AppConfig {
@@ -77,6 +101,7 @@ export function loadConfig(): AppConfig {
     workerPrivateKey,
     workerFromBlock: env("WORKER_FROM_BLOCK") ? Number(env("WORKER_FROM_BLOCK")) : undefined,
     priceFromBlock: env("PRICE_FROM_BLOCK") ? Number(env("PRICE_FROM_BLOCK")) : undefined,
-    reserveFromBlock: env("RESERVE_FROM_BLOCK") ? Number(env("RESERVE_FROM_BLOCK")) : undefined
+    reserveFromBlock: env("RESERVE_FROM_BLOCK") ? Number(env("RESERVE_FROM_BLOCK")) : undefined,
+    listedFeeds: parseListedFeeds()
   };
 }

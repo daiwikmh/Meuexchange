@@ -68,6 +68,7 @@ export function createApp(config: AppConfig, desk: RepoDeskGateway, ledger: Proo
       },
       goldFeed: config.environment.goldFeed,
       goldPrice,
+      market: await desk.market().catch(() => null),
       contracts: { ascRepoDesk: config.deskAddress ?? null, collateralRegistry: config.collateral.emitter ?? null },
       agreements,
       proofs: ledger.all()

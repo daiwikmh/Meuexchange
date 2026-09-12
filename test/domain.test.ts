@@ -26,7 +26,8 @@ const config: AppConfig = {
   collateral: { role: "collateral", name: "Ethereum Sepolia", chainKey: 1, emitter: registryAddress },
   price: { role: "price", name: "Ethereum Mainnet", chainKey: 3, emitter: testnet.goldFeed.aggregator },
   reserves: { role: "reserves", name: "Ethereum Mainnet", chainKey: 3, emitter: testnet.reserveFeed.aggregator },
-  deskAddress
+  deskAddress,
+  listedFeeds: []
 };
 
 function harness() {
@@ -109,6 +110,24 @@ test("the ASCBase execute fragment names its tuple components", async () => {
   const siblings = execute?.inputs?.find((input) => input.name === "siblings");
 
   assert.deepEqual(siblings?.components?.map((component) => component.name), ["hash", "isLeft"]);
+});
+
+test("a listed asset adds a watch without new code", () => {
+  const oracle = "0x7777777777777777777777777777777777777777";
+  const built = buildWorkerConfig({
+    ...config,
+    collateral: { ...config.collateral, rpcUrl: "https://sepolia.example" },
+    price: { ...config.price, rpcUrl: "https://mainnet.example" },
+    workerPrivateKey: `0x${"11".repeat(32)}`,
+    listedFeeds: [
+      { name: "XAG / USD", aggregator: "0xB38d1D12Ba17aA62255e588a0bC845c1a589A50d", target: oracle, fromBlock: 25_956_688 }
+    ]
+  });
+
+  const listed = built?.watches.find((watch) => watch.name === "XAG / USD");
+  assert.equal(listed?.target, oracle, "a listed feed routes to its own consuming contract");
+  assert.equal(listed?.chainKey, 3, "listed feeds ride the attested mainnet watch");
+  assert.equal(listed?.fromBlock, 25_956_688);
 });
 
 test("the reserve feed is a different aggregator from the price feed", () => {

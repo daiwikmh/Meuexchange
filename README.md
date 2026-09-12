@@ -239,23 +239,9 @@ Requires Node 22+ and Foundry (tested on forge 1.7.1).
 
 ---
 
-## 🔒 Known limits
-
-Stated plainly, because a proof system oversold is worse than one honestly bounded.
-
-- **This proves provenance, not truth.** It proves a feed *said* a number. It removes the relay and the issuer's self-report from the trust path — the auditor remains trusted. Anyone claiming otherwise is overselling it.
-- **The demo borrows Kinesis's feeds.** `KAU`/`KAG Reserves` attest Kinesis's vaults, so the listings model an issuer whose reserves those feeds report — a stand-in in the way `TestBullion` stands in for PAXG. In production an issuer commissions their own PoR feed and only the bound address changes.
-- **There is no CTC/USD feed on Chainlink.** Quoting in a USD token is forced, not a shortcut: no provable way to price metal in tCTC exists today.
-- **Read-only direction.** Attestcoin writability is in third-party audit, so Creditcoin never writes to Ethereum. Releasing source-chain collateral is a source-chain decision whose event is then proved back.
-- **Emitter binding, not chain binding.** `ASCBase.execute` does not pass `chainKey` to the handler, so trust binds to the emitting address, as the reference examples do.
-- **Prices are only as fresh as the last proved round.** A fast move between rounds is invisible until the next one is proved; the 26-hour guard bounds the exposure without removing it.
-- **Operational.** Run exactly one worker — two prove the same events twice and pay for the duplicate's revert. Watches sweep sequentially, so a large backfill starves the others. The proof ledger is in memory and does not survive a restart.
-
----
-
 ## 📄 License
 
-Released under the **MIT License**.
+No license file has been committed yet — all rights reserved until one is added.
 
 <div align="center">
 <sub>Built on <a href="https://creditcoin.org/">Creditcoin</a> · <a href="https://docs.attestcoin.org/">Attestcoin Protocol</a> · <a href="https://chain.link/">Chainlink</a> · Foundry · Astro</sub>

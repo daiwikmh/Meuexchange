@@ -5,3 +5,6 @@ dist
 contracts/out
 cache
 lib/forge-std
+
+# local working notes, not published
+LIMITATIONS.md

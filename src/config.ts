@@ -18,6 +18,16 @@ export interface ListedFeed {
   fromBlock?: number;
 }
 
+/** A listed asset as the dashboard sees it: its token, its dealing window, its price feed. */
+export interface Listing {
+  name: string;
+  symbol: string;
+  unit: string;
+  token: string;
+  window: string;
+  feed: string;
+}
+
 export interface AppConfig {
   mode: Mode;
   port: number;
@@ -32,6 +42,7 @@ export interface AppConfig {
   priceFromBlock?: number;
   reserveFromBlock?: number;
   listedFeeds: ListedFeed[];
+  listings: Listing[];
 }
 
 /** Treats an empty environment variable as unset, so `.env` placeholders do not win over defaults. */
@@ -52,6 +63,16 @@ function parseListedFeeds(): ListedFeed[] {
     return parsed.filter((feed) => feed.aggregator && feed.target);
   } catch (error) {
     throw new Error(`LISTED_FEEDS is not valid JSON: ${error instanceof Error ? error.message : error}`);
+  }
+}
+
+function parseListings(): Listing[] {
+  const raw = env("LISTINGS");
+  if (!raw) return [];
+  try {
+    return (JSON.parse(raw) as Listing[]).filter((listing) => listing.token && listing.window);
+  } catch (error) {
+    throw new Error(`LISTINGS is not valid JSON: ${error instanceof Error ? error.message : error}`);
   }
 }
 
@@ -102,6 +123,7 @@ export function loadConfig(): AppConfig {
     workerFromBlock: env("WORKER_FROM_BLOCK") ? Number(env("WORKER_FROM_BLOCK")) : undefined,
     priceFromBlock: env("PRICE_FROM_BLOCK") ? Number(env("PRICE_FROM_BLOCK")) : undefined,
     reserveFromBlock: env("RESERVE_FROM_BLOCK") ? Number(env("RESERVE_FROM_BLOCK")) : undefined,
-    listedFeeds: parseListedFeeds()
+    listedFeeds: parseListedFeeds(),
+    listings: parseListings()
   };
 }

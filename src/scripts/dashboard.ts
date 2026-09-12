@@ -15,8 +15,13 @@ type DashboardPayload = {
   attestcoin: { proofBuilderUrl: string; blockProverPrecompile: string; chains: AttestedChain[] };
   goldFeed: { description: string; aggregator: string; decimals: number; chainKey: number };
   goldPrice: { answer: string; roundId: number; updatedAt: string; stale: boolean } | null;
-  market: { window: string | null; usd: string | null; gold: string | null; midUsdPerGram: string | null; buyUsdPerGram: string | null; sellUsdPerGram: string | null; goldInventory: string | null; usdInventory: string | null; spreadBps: number | null } | null;
-  contracts: { ascRepoDesk: string | null; collateralRegistry: string | null };
+  listings: Array<{
+    name: string; symbol: string; unit: string; token: string; window: string; feed: string;
+    decimals: number; totalSupply: string; provedReserves: string | null; headroom: string | null;
+    buyUsdPerUnit: string | null; sellUsdPerUnit: string | null; open: boolean;
+    tokenInventory: string; usdInventory: string;
+  }>;
+  contracts: { ascRepoDesk: string | null; collateralRegistry: string | null; usd: string | null };
   agreements: Array<{ id: string; status: AgreementStatus; principal: string; principalUsd: string; repaid: string; requiredRepayment: string; maturityAt: string; marginCalled: boolean; collateralValueUsd?: string; ltvBps?: number }>;
   proofs: Array<{ id: string; kind: string; status: string; sourceTxHash: string; creditcoinTxHash?: string; observedAt: string }>;
 };
@@ -121,16 +126,35 @@ function render(payload: DashboardPayload) {
     }).join('');
   }
 
-  const market = payload.market;
-  const money = (value: string | null, unit = '') => (value ? `$${Number(formatUnits(value, 6)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${unit}` : '—');
-  setText('#window-mid', market?.midUsdPerGram ? `${money(market.midUsdPerGram)} / g` : 'window closed');
-  setText('#window-quote', market?.buyUsdPerGram ? `${money(market.buyUsdPerGram)} / ${money(market.sellUsdPerGram)}` : '—');
-  setText('#window-inventory', market?.goldInventory
-    ? `${Number(formatUnits(market.goldInventory, 18)).toLocaleString('en-US')} g · ${money(market.usdInventory)}`
-    : 'not funded');
-  quotePerGram = market?.buyUsdPerGram ?? null;
-  sellPerGram = market?.sellUsdPerGram ?? null;
-  updateTradePreview();
+  const units = (value: string, decimals: number) =>
+    Number(BigInt(value) / 10n ** BigInt(Math.max(0, decimals - 6))) / 1e6;
+  const money = (value: string | null) =>
+    value ? `$${(Number(BigInt(value)) / 1e6).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}` : '—';
+
+  setText('#listing-count', payload.listings.length);
+  setText('#feed-count', payload.attestcoin.chains.length + payload.listings.length);
+
+  const listings = root.querySelector('#listings');
+  if (listings) {
+    listings.innerHTML = payload.listings.length
+      ? payload.listings.map((listing) => `
+        <div class="listing-card" data-listing="${escapeHtml(listing.symbol)}">
+          <div class="listing-head"><strong>${escapeHtml(listing.name)}</strong><span>${escapeHtml(listing.feed)}</span></div>
+          ${listing.open
+            ? `<div class="listing-quote"><span>buy <b>${money(listing.buyUsdPerUnit)}</b></span><span>sell <b>${money(listing.sellUsdPerUnit)}</b></span></div>`
+            : '<div class="listing-closed">Window closed — no fresh proved round</div>'}
+          <div class="listing-reserve">${listing.provedReserves
+            ? `${units(listing.totalSupply, listing.decimals).toLocaleString('en-US')} / ${units(listing.provedReserves, listing.decimals).toLocaleString('en-US')} ${escapeHtml(listing.unit)} issued against proved reserves`
+            : 'no proved reserves'}</div>
+          <div class="listing-trade">
+            <input type="number" min="0" step="0.1" value="1" data-amount="${escapeHtml(listing.symbol)}" />
+            <button class="buy" data-buy="${escapeHtml(listing.symbol)}">Buy</button>
+            <button class="sell" data-sell="${escapeHtml(listing.symbol)}">Sell</button>
+          </div>
+        </div>`).join('')
+      : '<div class="loading-row">No assets listed yet.</div>';
+    bindTradeButtons();
+  }
 
   const chainLines = root.querySelector('#chain-lines');
   if (chainLines) {
@@ -203,66 +227,55 @@ walletDialogButton.addEventListener('click', connectWallet);
 root.querySelector('[data-close-wallet]')!.addEventListener('click', () => { walletDialog.hidden = true; });
 walletDialog.addEventListener('click', (event) => { if (event.target === walletDialog) walletDialog.hidden = true; });
 
-let quotePerGram: string | null = null;
-let sellPerGram: string | null = null;
-
-function gramsInput() {
-  return Number((root.querySelector('#trade-grams') as HTMLInputElement | null)?.value ?? '0');
+function listingFor(symbol: string) {
+  const listing = snapshot?.listings.find((entry) => entry.symbol === symbol);
+  if (!listing) throw new Error(`${symbol} is not listed`);
+  return listing;
 }
 
-function updateTradePreview() {
-  const grams = gramsInput();
-  const target = root.querySelector('#trade-preview');
-  if (!target) return;
-  if (!quotePerGram || !sellPerGram || !Number.isFinite(grams) || grams <= 0) {
-    target.textContent = '—';
-    return;
-  }
-  const buy = (Number(formatUnits(quotePerGram, 6)) * grams).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const sell = (Number(formatUnits(sellPerGram, 6)) * grams).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  target.textContent = `$${buy}  /  $${sell}`;
-}
-
-root.querySelector('#trade-grams')?.addEventListener('input', updateTradePreview);
-
-async function trade(side: 'buy' | 'sell') {
-  const market = snapshot?.market;
-  if (!market?.window) throw new Error('The dealing window is not configured');
+async function trade(symbol: string, side: 'buy' | 'sell') {
   if (!walletAccount) throw new Error('Connect a wallet to trade');
-  const grams = gramsInput();
-  if (!Number.isFinite(grams) || grams <= 0) throw new Error('Enter a positive number of grams');
+  const listing = listingFor(symbol);
+  if (!listing.open) throw new Error(`${listing.name} window is closed — its feed has no fresh proved round`);
+
+  const raw = (root.querySelector(`[data-amount="${symbol}"]`) as HTMLInputElement | null)?.value ?? '0';
+  const amount = Number(raw);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Enter a positive amount');
 
   const eip1193 = sdk.getProvider();
   if (!eip1193) throw new Error('No wallet provider available');
   const signer = await new BrowserProvider(eip1193 as never).getSigner();
-  const amount = parseUnits(String(grams), 18);
-  const win = new Contract(market.window, goldWindowAbi as never, signer);
+  const value = parseUnits(String(amount), listing.decimals);
+  const win = new Contract(listing.window, goldWindowAbi as never, signer);
 
   if (side === 'buy') {
-    const [buyUsd] = await win.quote(amount);
-    const usd = new Contract(market.usd!, testUsdAbi as never, signer);
-    await (await usd.approve(market.window, buyUsd)).wait();
-    const tx = await win.buy(amount);
-    showMessage(`Buy submitted at the proved round: ${tx.hash}`);
+    const [buyUsd] = await win.quote(value);
+    const usdToken = new Contract(snapshot!.contracts.usd!, testUsdAbi as never, signer);
+    await (await usdToken.approve(listing.window, buyUsd)).wait();
+    const tx = await win.buy(value);
+    showMessage(`Buying ${amount} ${listing.unit} of ${listing.name} at the proved round: ${tx.hash}`);
     await tx.wait();
   } else {
-    const gold = new Contract(market.gold!, provedGoldAbi as never, signer);
-    await (await gold.approve(market.window, amount)).wait();
-    const tx = await win.sell(amount);
-    showMessage(`Sell submitted at the proved round: ${tx.hash}`);
+    const token = new Contract(listing.token, provedGoldAbi as never, signer);
+    await (await token.approve(listing.window, value)).wait();
+    const tx = await win.sell(value);
+    showMessage(`Selling ${amount} ${listing.unit} of ${listing.name} at the proved round: ${tx.hash}`);
     await tx.wait();
   }
   await refresh();
 }
 
-for (const side of ['buy', 'sell'] as const) {
-  root.querySelector(`#trade-${side}`)?.addEventListener('click', async () => {
-    const button = root.querySelector<HTMLButtonElement>(`#trade-${side}`)!;
-    button.disabled = true;
-    try { await trade(side); }
-    catch (error) { showMessage(error instanceof Error ? error.message : `Could not ${side} gold`); }
-    finally { button.disabled = false; }
-  });
+function bindTradeButtons() {
+  for (const side of ['buy', 'sell'] as const) {
+    root.querySelectorAll<HTMLButtonElement>(`[data-${side}]`).forEach((button) => {
+      button.onclick = async () => {
+        button.disabled = true;
+        try { await trade(button.dataset[side]!, side); }
+        catch (error) { showMessage(error instanceof Error ? error.message : `Could not ${side}`); }
+        finally { button.disabled = false; }
+      };
+    });
+  }
 }
 
 function randomAgreementId() {
@@ -270,7 +283,7 @@ function randomAgreementId() {
   return `0x${[...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
-root.querySelector('#prepare-terms')!.addEventListener('click', async () => {
+root.querySelector('#prepare-terms')?.addEventListener('click', async () => {
   const button = root.querySelector<HTMLButtonElement>('#prepare-terms')!;
   button.disabled = true;
   try {
@@ -293,10 +306,10 @@ root.querySelector('#prepare-terms')!.addEventListener('click', async () => {
         maturity: Math.floor(Date.now() / 1000) + 30 * 86_400
       })
     });
-    const result = await response.json() as { error?: string; transaction?: { to: string; data: string; value: string } };
+    const result = await response.json() as { error?: string; transaction?: unknown };
     if (!response.ok || !result.transaction) throw new Error(result.error || 'The API rejected the terms');
 
-    showMessage('Terms call prepared. Sign it in your wallet to publish the agreement on Creditcoin; MEU broadcast nothing.');
+    showMessage('Terms call prepared. Sign it in your wallet to publish the agreement on Creditcoin.');
     await refresh();
     activateTab('proofs');
   } catch (error) { showMessage(error instanceof Error ? error.message : 'Could not prepare the terms call'); }

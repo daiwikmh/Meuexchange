@@ -27,7 +27,8 @@ const config: AppConfig = {
   price: { role: "price", name: "Ethereum Mainnet", chainKey: 3, emitter: testnet.goldFeed.aggregator },
   reserves: { role: "reserves", name: "Ethereum Mainnet", chainKey: 3, emitter: testnet.reserveFeed.aggregator },
   deskAddress,
-  listedFeeds: []
+  listedFeeds: [],
+  listings: []
 };
 
 function harness() {

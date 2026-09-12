@@ -3,6 +3,7 @@ import ascRepoDeskAbi from "../contracts/abi/ASCRepoDesk.json" with { type: "jso
 import collateralRegistryAbi from "../contracts/abi/CollateralRegistry.json" with { type: "json" };
 import { statusByIndex, type GoldPricePoint, type RepoAgreement, type RepoDeskReader, type RepoStatus } from "./domain.js";
 import type { CreditcoinEnvironment } from "./creditcoin.js";
+import type { Listing } from "./config.js";
 
 export const repoDeskInterface = new Interface(ascRepoDeskAbi as never);
 export const collateralRegistryInterface = new Interface(collateralRegistryAbi as never);
@@ -106,38 +107,55 @@ export class RepoDeskGateway implements RepoDeskReader {
     return Number(latest.height);
   }
 
-  /** Live state of the dealing window, when one is configured. */
-  async market() {
-    const windowAddress = process.env.GOLD_WINDOW_ADDRESS;
-    const usdAddress = process.env.TEST_USD_ADDRESS;
-    const goldAddress = process.env.PROVED_GOLD_ADDRESS;
-    if (!this.provider || !windowAddress || !usdAddress || !goldAddress) return null;
+  /**
+   * Live state of every listed asset: proved reserves, proved price, window quote and inventory.
+   * A listing whose feed has no fresh round reports a closed window rather than a stale quote.
+   */
+  async listings(entries: Listing[]) {
+    if (!this.provider || !entries.length) return [];
 
-    const { default: goldWindowAbi } = await import("../contracts/abi/GoldWindow.json", { with: { type: "json" } });
-    const erc20 = ["function balanceOf(address) view returns (uint256)"];
-    const win = new Contract(windowAddress, goldWindowAbi as never, this.provider);
-    const base = {
-      window: windowAddress,
-      usd: usdAddress,
-      gold: goldAddress,
-      goldInventory: (await new Contract(goldAddress, erc20, this.provider).balanceOf(windowAddress)).toString(),
-      usdInventory: (await new Contract(usdAddress, erc20, this.provider).balanceOf(windowAddress)).toString(),
-      spreadBps: Number(await win.spreadBps())
-    };
+    const [{ default: metalAbi }, { default: windowAbi }] = await Promise.all([
+      import("../contracts/abi/ProvedMetal.json", { with: { type: "json" } }),
+      import("../contracts/abi/MetalWindow.json", { with: { type: "json" } })
+    ]);
+    const erc20 = [
+      "function balanceOf(address) view returns (uint256)",
+      "function totalSupply() view returns (uint256)",
+      "function decimals() view returns (uint8)"
+    ];
 
-    try {
-      const oneGram = 10n ** 18n;
-      const [buyUsd, sellUsd] = await win.quote(oneGram);
-      return {
-        ...base,
-        midUsdPerGram: (await win.midUsdPerGram()).toString(),
-        buyUsdPerGram: buyUsd.toString(),
-        sellUsdPerGram: sellUsd.toString()
-      };
-    } catch {
-      // A stale or absent proved round closes the window; inventory is still worth showing.
-      return { ...base, midUsdPerGram: null, buyUsdPerGram: null, sellUsdPerGram: null };
-    }
+    return Promise.all(
+      entries.map(async (entry) => {
+        const token = new Contract(entry.token, [...erc20, ...(metalAbi as never[])], this.provider);
+        const win = new Contract(entry.window, windowAbi as never, this.provider);
+
+        const [supply, decimals, goldInventory, usdInventory] = await Promise.all([
+          token.totalSupply(),
+          token.decimals(),
+          token.balanceOf(entry.window),
+          new Contract(process.env.TEST_USD_ADDRESS ?? entry.token, erc20, this.provider).balanceOf(entry.window)
+        ]);
+
+        const reserves = await token.provedReserves().catch(() => null);
+        const quote = await win
+          .quote(10n ** BigInt(decimals))
+          .then(([buy, sell]: [bigint, bigint]) => ({ buy: buy.toString(), sell: sell.toString() }))
+          .catch(() => null);
+
+        return {
+          ...entry,
+          decimals: Number(decimals),
+          totalSupply: supply.toString(),
+          provedReserves: reserves ? reserves.toString() : null,
+          headroom: reserves ? (reserves > supply ? reserves - supply : 0n).toString() : null,
+          buyUsdPerUnit: quote?.buy ?? null,
+          sellUsdPerUnit: quote?.sell ?? null,
+          open: quote !== null,
+          tokenInventory: goldInventory.toString(),
+          usdInventory: usdInventory.toString()
+        };
+      })
+    );
   }
 
   offerTerms(input: {

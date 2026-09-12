@@ -29,18 +29,18 @@ function showMessage(message: string) {
   alertBox.hidden = false;
 }
 
-const pages: Record<string, { eyebrow: string; title: string }> = {
-  overview: { eyebrow: 'MEU EXCHANGE / OVERVIEW', title: 'Proved bullion<br /><em>priced on-chain.</em>' },
-  attest: { eyebrow: 'MEU EXCHANGE / ATTESTCOIN', title: 'Proved, not<br /><em>reported.</em>' },
-  lifecycle: { eyebrow: 'MEU EXCHANGE / REPO LIFECYCLE', title: 'From bullion<br /><em>to credit.</em>' },
-  proofs: { eyebrow: 'MEU EXCHANGE / PROOF QUEUE', title: 'Every fact.<br /><em>Every proof.</em>' }
+const pages: Record<string, { label: string; meta: string }> = {
+  overview: { label: 'Overview', meta: 'Agreements, proved price and pipeline health' },
+  attest: { label: 'Attestcoin protocol', meta: 'Attested sources, proof builder and block prover' },
+  lifecycle: { label: 'Repo lifecycle', meta: 'Pledges, drawn principal and settlement' },
+  proofs: { label: 'Proof queue', meta: 'Source-chain events on their way to Creditcoin' }
 };
 
 function activateTab(name: string) {
   const page = pages[name];
   if (page) {
-    root.querySelector('#page-eyebrow')!.textContent = page.eyebrow;
-    root.querySelector('#page-title')!.innerHTML = page.title;
+    root.querySelector('#page-label')!.textContent = page.label;
+    root.querySelector('#page-meta')!.textContent = page.meta;
   }
   tabs.forEach((tab) => {
     const active = tab.dataset.tab === name;

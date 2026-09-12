@@ -2,6 +2,7 @@ import "dotenv/config";
 import { Contract, JsonRpcProvider } from "ethers";
 import ascRepoDeskAbi from "../contracts/abi/ASCRepoDesk.json" with { type: "json" };
 import provedGoldAbi from "../contracts/abi/ProvedGold.json" with { type: "json" };
+import goldWindowAbi from "../contracts/abi/GoldWindow.json" with { type: "json" };
 import { loadConfig } from "../src/config.js";
 
 const config = loadConfig();
@@ -11,6 +12,7 @@ if (!hash) { console.error("usage: tsx scripts/inspect-tx.ts <creditcoin tx hash
 const provider = new JsonRpcProvider(config.environment.rpcUrl, config.environment.chainId, { staticNetwork: true });
 const desk = new Contract(config.deskAddress!, ascRepoDeskAbi as never, provider);
 const gold = new Contract(config.goldAddress ?? config.deskAddress!, provedGoldAbi as never, provider);
+const win = new Contract(process.env.GOLD_WINDOW_ADDRESS ?? config.deskAddress!, goldWindowAbi as never, provider);
 const transaction = await provider.getTransaction(hash);
 if (!transaction) {
   console.log(`\n${hash}\n  not found on ${config.environment.network}\n`);
@@ -26,7 +28,7 @@ console.log(`  calldata   ${transaction?.data.length ? (transaction.data.length 
 console.log(`  logs       ${receipt?.logs.length}`);
 for (const log of receipt?.logs ?? []) {
   let parsed = null;
-  for (const iface of [desk.interface, gold.interface]) {
+  for (const iface of [desk.interface, gold.interface, win.interface]) {
     try { parsed = iface.parseLog({ topics: [...log.topics], data: log.data }); } catch { /* try the next */ }
     if (parsed) break;
   }

@@ -9,11 +9,15 @@ if (!hash) { console.error("usage: tsx scripts/inspect-tx.ts <creditcoin tx hash
 
 const provider = new JsonRpcProvider(config.environment.rpcUrl, config.environment.chainId, { staticNetwork: true });
 const desk = new Contract(config.deskAddress!, ascRepoDeskAbi as never, provider);
-const receipt = await provider.getTransactionReceipt(hash);
 const transaction = await provider.getTransaction(hash);
+if (!transaction) {
+  console.log(`\n${hash}\n  not found on ${config.environment.network}\n`);
+  process.exit(1);
+}
+const receipt = await provider.waitForTransaction(hash, 1, 180_000);
 
 console.log(`\n${config.environment.explorerUrl}/tx/${hash}`);
-console.log(`  status     ${receipt?.status === 1 ? "SUCCESS" : "FAILED"}`);
+console.log(`  status     ${receipt === null ? "PENDING (not mined within 180s)" : receipt.status === 1 ? "SUCCESS" : "REVERTED"}`);
 console.log(`  block      ${receipt?.blockNumber}`);
 console.log(`  gas used   ${receipt?.gasUsed}`);
 console.log(`  calldata   ${transaction?.data.length ? (transaction.data.length - 2) / 2 : 0} bytes`);

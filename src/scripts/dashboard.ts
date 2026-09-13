@@ -84,7 +84,15 @@ alertBox.querySelector('button')!.addEventListener('click', () => { alertBox.hid
 async function getDashboard() {
   const response = await fetch('/api/dashboard', { headers: { accept: 'application/json' } });
   if (!response.ok) throw new Error(`API returned ${response.status}`);
-  return await response.json() as DashboardPayload;
+  const payload = await response.json() as DashboardPayload;
+  // The desk read is the heaviest call in the payload and is the first to drop on a slow hop.
+  if (!payload.agreements.length) {
+    const retry = await fetch('/api/agreements', { headers: { accept: 'application/json' } })
+      .then((second) => (second.ok ? second.json() as Promise<Pick<DashboardPayload, 'agreements'>> : null))
+      .catch(() => null);
+    if (retry?.agreements.length) payload.agreements = retry.agreements;
+  }
+  return payload;
 }
 
 function setText(selector: string, value: string | number) {

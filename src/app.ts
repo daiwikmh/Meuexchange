@@ -19,7 +19,11 @@ export function createApp(config: AppConfig, desk: RepoDeskGateway, ledger: Proo
   ];
 
   const liveAgreements = async () => {
-    for (const agreementId of await desk.recentAgreementIds().catch(() => [])) index.track(agreementId);
+    const discovered = await desk.recentAgreementIds().catch((error: unknown) => {
+      console.error("recentAgreementIds failed:", message(error));
+      return [];
+    });
+    for (const agreementId of discovered) index.track(agreementId);
     return index.hydrate(desk);
   };
 

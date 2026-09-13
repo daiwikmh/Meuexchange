@@ -1,6 +1,7 @@
 <div align="center">
 
-<img src="public/images/vault.webp" alt="MEU Exchange" width="680" />
+<img src="public/apple-touch-icon.png" alt="MEU Exchange logo" width="88" height="88" />
+
 
 # MEU Exchange
 
@@ -40,7 +41,7 @@ The result is a desk where proofs are not decoration — they are preconditions 
 ## Features
 
 ### The proof layer
-- **Two ASCs** extend `ASCBase` and verify through the block-prover precompile at `0x…0FD2`. Every proof transaction carries two logs — precompile, then business logic — so no window exists where unverified data sits in storage.
+- **Four USCs** extend `ASCBase` and verify through the block-prover precompile at `0x…0FD2`. Every proof transaction carries two logs — precompile, then business logic — so no window exists where unverified data sits in storage.
 - **Four live feeds, two roles** — `XAU/USD` and `XAG/USD` price the book; `KAU Reserves` and `KAG Reserves` cap issuance. All four are operated by Chainlink, not by us.
 - **Binds the aggregator, never the proxy** — `EACAggregatorProxy` does not emit `AnswerUpdated`. Binding the proxy would silently receive nothing forever.
 - **Rounds move strictly forward** — a replayed proof is still a *valid* proof; rejecting it is what stops the book being rewound.
@@ -57,6 +58,30 @@ The result is a desk where proofs are not decoration — they are preconditions 
 - **Permissionless risk actions** — `markUndercollateralised` follows from a proved price; `markDefaulted` follows from *proved silence* at maturity. No privileged role decides either.
 - **Fills you can audit** — every trade emits the Chainlink round id it filled at, so a trader can verify their price against a specific proved round.
 - **Non-custodial** — the API returns unsigned calldata. The one key in the system pays gas for proof submission, and `execute` is permissionless and moves no value, so a compromised worker can never draw principal or release collateral.
+
+---
+
+## 🔗 The Universal Smart Contracts
+
+Four of the deployed contracts are USCs: each extends [`ASCBase`](https://www.npmjs.com/package/@gluwa/asc-contracts) and overrides `_processAndEmitEvent`, so the only way into them is `ASCBase.execute()` — which verifies the proof through the block-prover precompile at `0x…0FD2` *before* dispatching. Verification and action share a transaction, so there is no window where unverified data sits in storage waiting to be trusted.
+
+| USC | Address | Proves | Acts on it by |
+|-----|---------|--------|---------------|
+| **`ASCRepoDesk`** | [`0x0231762F…e4AF3B`](https://creditcoin-testnet.blockscout.com/address/0x0231762F2F2285F6ea27Ad456E144C1371e4AF3B) | `CollateralPledged`, `ServicingPayment`, `CollateralReleased` from Sepolia; `AnswerUpdated` from mainnet | Locking collateral, recording repayment, releasing, and marking the book to the proved round |
+| **`ProvedGold`** | [`0x2a8142Db…098BDB0`](https://creditcoin-testnet.blockscout.com/address/0x2a8142Db4C3b90333339A6E25b225e808098BDB0) | `AnswerUpdated` from the `KAU Reserves` PoR feed | Raising the issuance cap — `issue()` reverts past `provedReserves` |
+| **`ProvedMetal`** | [`0x74f6E83a…1e81cAd0`](https://creditcoin-testnet.blockscout.com/address/0x74f6E83aA79a16CeD41Ec5b0697879E51e81cAd0) | `AnswerUpdated` from the reserve feed named at construction | The same cap, for any metal — silver is one instance, no new code |
+| **`ProvedPriceOracle`** | [`0x9B6eB52D…8D6C8A`](https://creditcoin-testnet.blockscout.com/address/0x9B6eB52D26CeF7b04bb52b307Db86262bD8D6C8A) | `AnswerUpdated` from any registered aggregator | Publishing the proved round every dealing window quotes against |
+
+Each handler decodes the proved source transaction with `EvmV1Decoder`, then refuses anything it cannot stand behind:
+
+- **`UntrustedEmitter`** — the log came from an address this USC is not bound to. Binding is to the **aggregator**, never the `EACAggregatorProxy`, which emits nothing.
+- **`StaleRound`** — the round id did not move forward. A replayed proof is still a *valid* proof; rejecting it is what stops the book being rewound.
+- **`NoMatchingLog` / `MalformedLog`** — the proof carried no `AnswerUpdated`, or one with the wrong shape.
+- **`InvalidAction`** — an action byte the USC does not implement.
+
+`execute()` is **permissionless and moves no value**. Anyone can submit a proof; the submitter only pays gas. That is why the proof worker's key can never draw principal or release collateral, and why the desk survives the worker being compromised or replaced.
+
+> One caveat we state plainly: `ASCBase.execute` does not pass `chainKey` to the handler, so trust binds to the **emitting address**, not to the chain it emitted on — the same convention as the reference examples.
 
 ---
 
@@ -211,31 +236,7 @@ Then add the feeds to `LISTED_FEEDS` and the asset to `LISTINGS`, and the worker
 
 The TradingView chart is labelled **"not the proved price"** on purpose. Market spot and the proved round sit side by side so the gap between them is visible — that gap *is* attestation lag.
 
----
 
-## Quickstart
-
-```bash
-npm install
-git clone --depth 1 https://github.com/foundry-rs/forge-std lib/forge-std
-cp .env.example .env          # add DEPLOYER_PRIVATE_KEY, fund it with Sepolia ETH + tCTC
-
-npm run preflight             # must print "Ready."
-./scripts/deploy.sh           # deploys, binds registry + aggregator + risk params
-
-npm run dev                   # Hono API on :3000
-npm run worker                # proof worker — run exactly one
-npm run dev:web               # Astro landing + /dashboard on :4321
-```
-
-Requires Node 22+ and Foundry (tested on forge 1.7.1).
-
-| Script | What it does |
-|--------|--------------|
-| `npm run demo <terms\|pledge\|draw\|repay\|release\|status>` | Drives the repo lifecycle end to end |
-| `npm run gold <status\|issue>` · `npm run window <status\|fund\|buy\|sell>` | Issuance and dealing |
-| `npm run preflight` · `npm run check:attestation` | Pre-deploy checks and live attestation lag |
-| `npx tsx scripts/inspect-tx.ts <hash>` · `scripts/why-revert.ts` | Decode a proof receipt, or name a refusal |
 
 ---
 

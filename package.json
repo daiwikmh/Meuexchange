@@ -8,6 +8,7 @@
     "start": "tsx src/server.ts",
     "dev:web": "astro dev",
     "build:web": "astro build",
+    "whitepaper:pdf": "tsx scripts/whitepaper-pdf.ts",
     "worker": "tsx src/worker.ts",
     "check": "tsc --noEmit",
     "test": "tsx --test test/**/*.test.ts",

@@ -1,0 +1,679 @@
+---
+import '../styles/whitepaper.css';
+
+const sections = [
+  ['1', 'The trust gap in on-chain RWA credit', 'problem'],
+  ['2', 'Creditcoin as the venue', 'creditcoin'],
+  ['3', 'The Attestcoin readability model', 'attestcoin'],
+  ['4', 'System architecture', 'architecture'],
+  ['5', 'The proof flow, end to end', 'proof-flow'],
+  ['6', 'The contract model', 'contracts'],
+  ['7', 'Listing a real-world asset', 'listing'],
+  ['8', 'Risk parameters', 'risk'],
+  ['9', 'Evidence from the testnet deployment', 'evidence'],
+  ['10', 'What this design does not prove', 'limits'],
+  ['11', 'Deployment reference', 'deployment'],
+];
+
+const executeSignature = `<span class="c">// @gluwa/asc-contracts · readability/ASCBase.sol</span>
+<span class="k">function</span> execute(
+    uint8   action,              <span class="c">// which handler branch to run</span>
+    uint64  chainKey,            <span class="c">// which attested source chain</span>
+    uint64  blockHeight,         <span class="c">// the attested block</span>
+    bytes   calldata encodedTransaction,
+    bytes32 merkleRoot,
+    INativeQueryVerifier.MerkleProofEntry[] calldata siblings,
+    bytes32 lowerEndpointDigest, <span class="c">// continuity proof</span>
+    bytes32[] calldata continuityRoots
+) <span class="k">external returns</span> (<span class="k">bool</span> success);`;
+
+const issueGuard = `<span class="c">// contracts/sol/ProvedMetal.sol</span>
+<span class="k">function</span> issue(<span class="k">address</span> to, uint256 units) <span class="k">external</span> onlyOwner {
+    <span class="k">if</span> (provedReserves == 0)                              <span class="k">revert</span> NoReservesProved();
+    <span class="k">if</span> (block.timestamp > reserveUpdatedAt + MAX_RESERVE_AGE) <span class="k">revert</span> StaleReserves(reserveUpdatedAt);
+
+    uint256 available = headroom();
+    <span class="k">if</span> (units > available)  <span class="k">revert</span> ExceedsProvedReserves(units, available);
+
+    _mint(to, units);
+}`;
+
+const emitterCheck = `<span class="c">// the decode-and-bind step inside _processAndEmitEvent</span>
+EvmV1Decoder.LogEntry[] <span class="k">memory</span> logs =
+    EvmV1Decoder.getLogsByEventSignature(receipt, ANSWER_UPDATED_SIGNATURE);
+<span class="k">if</span> (logs.length == 0)                <span class="k">revert</span> NoMatchingLog();
+
+EvmV1Decoder.LogEntry <span class="k">memory</span> log = logs[0];
+<span class="k">if</span> (log.address_ != RESERVE_FEED)    <span class="k">revert</span> UntrustedEmitter(log.address_);
+<span class="k">if</span> (log.topics.length != 3 || log.data.length != 32) <span class="k">revert</span> MalformedLog();
+
+uint64 roundId = uint64(uint256(log.topics[2]));
+<span class="k">if</span> (roundId &lt;= reserveRoundId)      <span class="k">revert</span> StaleRound(roundId, reserveRoundId);`;
+
+const contractRows = [
+  ['ASCRepoDesk', 'Creditcoin', 'ASCBase', 'Credit agreements: terms, proved pledge, draw, margin, default. Reads two source chains in four action branches.'],
+  ['ProvedGold', 'Creditcoin', 'ASCBase + ERC-20', 'pGOLD. Supply capped by a proved KAU Reserves round. Feed bound once, after deployment.'],
+  ['ProvedMetal', 'Creditcoin', 'ASCBase + ERC-20', 'The listing primitive. Name, symbol and reserve aggregator are constructor arguments; pSILVER is one instance.'],
+  ['ProvedPriceOracle', 'Creditcoin', 'ASCBase', 'One contract, many feeds. The emitting aggregator identifies the feed, so listing a price source is a transaction.'],
+  ['MetalWindow', 'Creditcoin', 'plain', 'Two-way dealing window. Fills at the last proved round; holds inventory, so it can never mint.'],
+  ['CollateralRegistry', 'Sepolia', 'plain', 'Source-chain escrow. Holds collateral, emits unambiguous events, and knows nothing about Creditcoin.'],
+];
+
+const refusalRows = [
+  ['ProvedGold / ProvedMetal', 'NoReservesProved()', 'Issuance before any reserve round has been proved.'],
+  ['ProvedGold / ProvedMetal', 'ExceedsProvedReserves(requested, headroom)', 'Issuance beyond the proved reserve figure.'],
+  ['ProvedGold / ProvedMetal', 'StaleReserves(updatedAt)', 'The last proved reserve round is older than 26 hours.'],
+  ['all ASCs', 'UntrustedEmitter(emitter)', 'The proved log was emitted by an address the contract is not bound to.'],
+  ['all ASCs', 'StaleRound(proved, stored)', 'A valid proof of a round at or behind the stored one — a replay.'],
+  ['ASCRepoDesk', 'UnexpectedStatus(agreementId, status)', 'A lifecycle step taken out of order, including drawing before the pledge is proved.'],
+  ['ASCRepoDesk', 'StalePrice(updatedAt)', 'Mark-to-market against a price older than 26 hours.'],
+  ['ASCRepoDesk', 'ExceedsAdvanceRate(principalUsd, maxUsd)', 'A draw that would exceed the advance rate at the proved mark.'],
+  ['ProvedPriceOracle', 'UnknownAggregator(aggregator)', 'A proved round from a feed that was never registered.'],
+];
+
+const riskRows = [
+  ['Advance rate', '6,000 bp (60%)', 'ASCRepoDesk.collateralAssets', 'Ceiling on principal against proved collateral value at draw.'],
+  ['Maintenance margin', '7,500 bp (75%)', 'ASCRepoDesk.collateralAssets', 'Below this coverage a funded agreement can be margin-called by anyone.'],
+  ['Max price age', '93,600 s (26 h)', 'ASCRepoDesk.MAX_PRICE_AGE', 'Chainlink XAU/USD heartbeat is 24 h; the guard adds two hours of slack.'],
+  ['Max reserve age', '93,600 s (26 h)', 'ProvedMetal.MAX_RESERVE_AGE', 'Past it, issuance freezes rather than trusting an old reserve figure.'],
+  ['Dealing spread', '50 bp', 'MetalWindow.spreadBps', 'Applied symmetrically around the proved mid. Capped at 1,000 bp by the constructor.'],
+  ['Price decimals', '8', 'ASCRepoDesk.PRICE_DECIMALS', 'Matches the Chainlink metal feeds.'],
+];
+
+const deployedCreditcoin = [
+  ['ASCRepoDesk', '0x0231762F2F2285F6ea27Ad456E144C1371e4AF3B'],
+  ['ProvedGold (pGOLD)', '0x2a8142Db4C3b90333339A6E25b225e808098BDB0'],
+  ['ProvedPriceOracle', '0x9B6eB52D26CeF7b04bb52b307Db86262bD8D6C8A'],
+  ['ProvedMetal (pSILVER)', '0x74f6E83aA79a16CeD41Ec5b0697879E51e81cAd0'],
+  ['GoldWindow', '0x2369B00a916132cBD3639bB29353d062f5fF325a'],
+  ['MetalWindow (silver)', '0x2BE77D62F16438ce44c41120846321d871b73806'],
+  ['TestUSD (tUSD)', '0x63b8493f7508Bea15b5D29A369E74D99Ac8932d6'],
+];
+
+const feeds = [
+  ['XAU / USD', 'price', '0x0e3dd634FFbF7EA89BbDCF09Ccc463302FD5f903'],
+  ['XAG / USD', 'price', '0xB38d1D12Ba17aA62255e588a0bC845c1a589A50d'],
+  ['KAU Reserves', 'proof of reserve', '0x9b3a984d1abbe03845CBa7A895f1ff7f4209d59c'],
+  ['KAG Reserves', 'proof of reserve', '0x3B4f49f4aa5491B5a60C0724467A67b4910aEAAc'],
+];
+
+const txBase = 'https://creditcoin-testnet.blockscout.com/tx/';
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="MEU Exchange whitepaper: gold and silver RWA credit on Creditcoin, with Chainlink price and Proof-of-Reserve feeds carried from Ethereum as Attestcoin inclusion proofs and verified by the block-prover precompile in the same transaction that acts on them." />
+    <meta name="theme-color" content="#f7f6f2" />
+    <link rel="preload" href="/fonts/dm-sans.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <title>MEU Exchange — Whitepaper</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#paper">Skip to the paper</a>
+
+    <header class="paper-nav no-print">
+      <a class="wordmark" href="/" aria-label="MEU Exchange home"><img src="/logo.png" alt="" width="24" height="24" />meu<span>exchange</span></a>
+      <nav aria-label="Paper navigation">
+        <a href="/">Home</a>
+        <a href="/dashboard">Dashboard</a>
+        <a class="download" href="/whitepaper.pdf" download>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 20h16"/></svg>
+          PDF
+        </a>
+      </nav>
+    </header>
+
+    <main class="sheet" id="paper">
+      <div class="title-block">
+        <span class="eyebrow"><i></i> MEU EXCHANGE · TECHNICAL WHITEPAPER</span>
+        <h1>Gold and silver credit,<br />settled on proofs.</h1>
+        <p class="subtitle">A lending and dealing desk on Creditcoin where Chainlink price and Proof-of-Reserve feeds are carried from Ethereum as Merkle inclusion proofs and verified by the block-prover precompile inside the same transaction that acts on them.</p>
+        <div class="title-meta">
+          <span>Creditcoin CC3 Testnet · chain 102031</span>
+          <span>Attestcoin Protocol readability</span>
+          <span>Version 1.0</span>
+        </div>
+      </div>
+
+      <div class="abstract">
+        <span class="eyebrow"><i></i> ABSTRACT</span>
+        <p style="margin-top:20px">Tokenised real-world assets inherit a trust problem their collateral does not have. The metal sits in an audited vault and its price is published by an independent feed, but the chain that lends against them can read neither. Every production answer routes both facts through an operator who <em>writes</em> them onto the lending chain, and that operator — not the vault, not the auditor, not the feed — becomes the thing a lender actually trusts.</p>
+        <p>MEU Exchange removes the writer. Four independently operated Chainlink feeds on Ethereum mainnet — two metal prices, two Proof-of-Reserve attestations — and a collateral escrow on Ethereum Sepolia are carried to Creditcoin by the Attestcoin Protocol as Merkle inclusion proofs bound to attested source blocks. Creditcoin's block-prover precompile verifies each proof natively, synchronously, in the same transaction as the business logic that consumes it. The contracts are written so that a missing or stale proof is not a degraded display but a revert: issuance beyond proved reserves, a draw before the pledge is proved, and a fill against an unrefreshed round each fail with a named error.</p>
+        <p>This paper describes the venue, the transport, the contract model, the listing path and the risk parameters, and then states plainly what the construction does not achieve. It proves provenance, not truth: that a named feed published a number, not that the number is correct. The auditor remains trusted. That boundary is argued here as a feature of an honest design rather than smoothed over, because a proof system oversold is worse than one honestly bounded.</p>
+      </div>
+
+      <nav class="toc" aria-label="Contents">
+        <span class="eyebrow"><i></i> CONTENTS</span>
+        <ol>
+          {sections.map(([num, title, id]) => (
+            <li><a href={`#${id}`}><span class="num">{num}</span><span>{title}</span></a></li>
+          ))}
+        </ol>
+      </nav>
+
+      <section class="chapter" id="problem">
+        <span class="eyebrow"><i></i> SECTION 1</span>
+        <h2>The trust gap in on-chain RWA credit</h2>
+        <p>A desk that lends against bullion has to answer three questions, and a blockchain is the wrong instrument for all three. <strong>Is the collateral really escrowed?</strong> The escrow lives on whichever chain the tokenised metal was issued on. <strong>What is the metal worth right now?</strong> The reference price is published by a feed operating on a chain chosen for liquidity, not for lending. <strong>Are the issuer's reserves real?</strong> That is an auditor's finding, published as a Proof-of-Reserve feed somewhere else again.</p>
+        <p>Each answer exists, on a chain, in a form a contract could in principle check. None of them is visible from the chain that needs them. The standard remedy is a relay: an operator observes the source chain and writes the observed value into a contract on the destination chain. The value is now readable, and the guarantee has quietly changed. The lender no longer trusts the auditor and the feed; they trust the operator's willingness and ability to report both faithfully, and the compromise of one key now moves a book.</p>
+        <h3>Displaying a proof is not the same as requiring one</h3>
+        <p>A weaker version of the same gap appears in systems that do carry attested data but treat it as decoration. Attested figures are rendered in an interface while the contract's state transitions run on separately written values, so the proof is evidence offered to a human rather than a precondition enforced by code. The distinction is observable: if the proof is missing or stale, does the system show a warning, or does the transaction fail?</p>
+        <div class="callout">
+          <span class="callout-label">THE DESIGN RULE</span>
+          <p>Every state transition that moves value in this system is gated on a proof verified in the same transaction. Where a proof is absent, stale, replayed, or emitted by an unbound address, the call reverts with a named error rather than proceeding on a lesser guarantee. Section 9 shows each of those refusals executed on a live testnet, paired with the transaction that then succeeded.</p>
+        </div>
+        <p>Three properties follow from that rule, and they are the claims this paper defends. Supply cannot exceed reserves that a Chainlink Proof-of-Reserve feed has published and this chain has verified. Credit cannot be drawn against collateral whose escrow has not been proved from the chain holding it. A trade cannot fill at a price no one has re-proved inside the staleness bound.</p>
+      </section>
+
+      <section class="chapter" id="creditcoin">
+        <span class="eyebrow"><i></i> SECTION 2</span>
+        <h2>Creditcoin as the venue</h2>
+        <p>Creditcoin is an EVM-compatible layer-1 blockchain built with the Polkadot SDK, whose documentation describes it as the evolution of an earlier Substrate-based credit protocol into a chain where "developers can build credit applications using familiar Ethereum tools." <sup><a href="#ref-1">[1]</a></sup> The name now refers specifically to the EVM-compatible network; the original Substrate protocol is documented separately as CC Enterprise.</p>
+        <h3>Consensus and execution</h3>
+        <p>The network runs Nominated Proof-of-Stake. The EVM layer has no separate consensus of its own — it inherits block production and finalisation from the Substrate runtime, with an EVM built on Frontier. <sup><a href="#ref-3">[3]</a></sup> The published specification gives a 15-second block time and finality in one to three blocks, roughly 350 transactions per second with the EVM in use and roughly 1,400 without, a 75,000,000 block gas limit and a 0.5 gwei base gas price. <sup><a href="#ref-2">[2]</a></sup></p>
+        <p>One difference from Ethereum matters when reasoning about the cost of proof submission. Creditcoin prices transactions using the Substrate notion of <em>weight</em> rather than Ethereum's gas accounting, with the results "designed to produce effectively identical" outcomes. <sup><a href="#ref-3">[3]</a></sup> In practice this surfaces as gas estimation that does not always report a precompile revert the way an Ethereum node would — a detail the proof worker in Section 5 has to handle explicitly rather than assume away.</p>
+        <h3>Why a credit desk belongs here</h3>
+        <p>Two properties make this venue a fit for the design rather than an arbitrary host.</p>
+        <ul>
+          <li><strong>Cross-chain verification is native, not a contract.</strong> Creditcoin's Universal Smart Contracts let a contract "coordinate, interact with, and update smart contracts across multiple blockchains." <sup><a href="#ref-1">[1]</a></sup> The verification step is a precompile in the runtime, so a proof is checked by the same node software that validates the block. There is no bridge contract holding a multisig, and no separate validator set to compromise, between the evidence and the contract consuming it.</li>
+          <li><strong>Finality is fast enough to gate on.</strong> With 15-second blocks and finality inside three, a proof submitted when a price round lands is actionable within roughly the same window a conventional oracle push would take. Synchronous verification therefore costs latency measured against attestation lag, not against the chain.</li>
+          <li><strong>The chain's purpose is credit.</strong> Creditcoin exists to carry lending applications, so a repo desk is a first-class use of the venue rather than a general-purpose contract deployed onto indifferent infrastructure.</li>
+        </ul>
+        <p>Everything in this paper executes on <strong>Creditcoin CC3 Testnet</strong>, chain ID 102031, native currency tCTC. Ethereum mainnet is read-only throughout: the Chainlink feeds are the real mainnet feeds and nothing in this system writes to them. Ethereum Sepolia holds the collateral escrow.</p>
+      </section>
+
+      <section class="chapter" id="attestcoin">
+        <span class="eyebrow"><i></i> SECTION 3</span>
+        <h2>The Attestcoin readability model</h2>
+        <p>The Attestcoin Protocol is the cross-chain layer hosted on Creditcoin. Its documentation splits the problem into two stages: <em>attestation</em>, described as "proactively tracking and reaching consensus on the state changes of source blockchains", and <em>transaction proving</em>, in which a specific transaction containing the data a builder wants is proved on demand. <sup><a href="#ref-4">[4]</a></sup></p>
+        <h3>Attestation</h3>
+        <p>A set of attestors "listen for new source chain blocks, vote on attestations, and store those attestations on-chain." <sup><a href="#ref-4">[4]</a></sup> This runs continuously and independently of any application. By the time a contract wants to read something, the block containing it has typically already been attested — the work of agreeing what a source chain's history is has been done ahead of the request, not in response to it.</p>
+        <p>Attestation is not instantaneous. Coverage trails the source chain's head, so a freshly emitted event is not immediately provable. In this system that lag is visible rather than hidden: the dashboard deliberately renders a market spot reference beside the proved round so that the gap between them is on screen, and the gap is attestation lag.</p>
+        <h3>Proving and verification</h3>
+        <p>Proofs are generated off-chain and checked on-chain — the documentation is explicit that this is a compute trade-off: "to save on-chain compute, we generate proofs off-chain then verify them on-chain," with builders requesting proofs of the transaction containing a target event from a proof generation server. <sup><a href="#ref-4">[4]</a></sup> Two proofs travel together:</p>
+        <ul>
+          <li>A <strong>Merkle inclusion proof</strong> placing the transaction inside a specific source block.</li>
+          <li>A <strong>continuity proof</strong> anchoring that block to the attestation record already stored on Creditcoin.</li>
+        </ul>
+        <p>The <strong>block-prover precompile</strong> at <code>0x0000000000000000000000000000000000000FD2</code> "verifies merkle and continuity proofs, signaling whether or not the source chain transaction is valid." <sup><a href="#ref-4">[4]</a></sup> Because it is a precompile, the check happens inside the transaction that needs it. There is no window in which unverified data sits in contract storage waiting to be validated, because state is only written after the precompile has returned.</p>
+        <h3>ASCBase, and what an application must implement</h3>
+        <p>An Attestcoin Smart Contract inherits one entry point. <code>ASCBase.execute</code> computes a query id from the chain key, block height and Merkle proof, rejects any id already processed, calls the precompile, and only then hands control to the application's <code>_processAndEmitEvent</code>.</p>
+        <pre><code set:html={executeSignature}></code></pre>
+        <p>Deduplication by query id is a protocol-level guarantee, and a load-bearing one: a replayed proof is still a <em>valid</em> proof. Without the check, anyone could resubmit yesterday's price round and roll the book back to it. The applications here add a second, independent guard in the same spirit — round ids must move strictly forward — because the same source transaction can be reached by more than one route.</p>
+        <p>Inside the handler, proved bytes are decoded with <code>EvmV1Decoder</code>, which exposes receipt fields and log entries filtered by event signature. Three checks turn a decoded log into something an application will act on: the source receipt must have succeeded, the emitting address must be the one the contract is bound to, and the log's shape must match what the feed is known to emit.</p>
+        <pre><code set:html={emitterCheck}></code></pre>
+        <div class="callout">
+          <span class="callout-label">A PRACTICAL BINDING NOTE</span>
+          <p>Every contract here binds a Chainlink <strong>aggregator</strong>, never the <code>EACAggregatorProxy</code> in front of it. The proxy does not emit <code>AnswerUpdated</code>; binding it would produce a system that deploys cleanly, verifies proofs correctly, and silently receives nothing forever.</p>
+          <p>Chain keys carry a similar trap. The published chain list and the live environment have been observed to disagree, so chain keys are read from the chain-info precompile rather than copied from documentation — a wrong key binds the wrong chain and fails only at proof time, long after the code looks correct.</p>
+        </div>
+      </section>
+
+      <section class="chapter" id="architecture">
+        <span class="eyebrow"><i></i> SECTION 4</span>
+        <h2>System architecture</h2>
+        <p>Three zones, and the boundary between them is a trust boundary. Ethereum holds the evidence and is never written to. The transport between the chains holds no authority at all. Creditcoin holds every decision that moves value.</p>
+
+        <figure>
+          <svg viewBox="0 0 720 410" role="img" aria-labelledby="fig1-title">
+            <title id="fig1-title">System topology: Ethereum sources, an off-chain transport with no authority, and the Creditcoin contracts that verify and act</title>
+            <g font-family="DM Sans, sans-serif">
+              <rect x="4" y="26" width="192" height="370" fill="none" stroke="#d7d5d1" stroke-dasharray="4 4"/>
+              <text x="4" y="18" font-size="10" letter-spacing="1" fill="#6a60d2">EVIDENCE · ETHEREUM</text>
+
+              <rect x="14" y="44" width="172" height="180" fill="#fbfaf7" stroke="#d7d5d1"/>
+              <text x="26" y="64" font-size="9.5" letter-spacing=".8" fill="#736f78">MAINNET · CHAIN KEY 3</text>
+              <rect x="24" y="74" width="152" height="28" fill="#fff" stroke="#e0ded9"/>
+              <text x="34" y="92" font-size="11" fill="#252527">Chainlink XAU / USD</text>
+              <rect x="24" y="106" width="152" height="28" fill="#fff" stroke="#e0ded9"/>
+              <text x="34" y="124" font-size="11" fill="#252527">Chainlink XAG / USD</text>
+              <rect x="24" y="138" width="152" height="28" fill="#fff" stroke="#e0ded9"/>
+              <text x="34" y="156" font-size="11" fill="#252527">KAU Reserves (PoR)</text>
+              <rect x="24" y="170" width="152" height="28" fill="#fff" stroke="#e0ded9"/>
+              <text x="34" y="188" font-size="11" fill="#252527">KAG Reserves (PoR)</text>
+              <text x="26" y="214" font-size="9" fill="#8d8a94">Operated by Chainlink. Read-only.</text>
+
+              <rect x="14" y="244" width="172" height="90" fill="#fbfaf7" stroke="#d7d5d1"/>
+              <text x="26" y="264" font-size="9.5" letter-spacing=".8" fill="#736f78">SEPOLIA · CHAIN KEY 1</text>
+              <rect x="24" y="274" width="152" height="44" fill="#fff" stroke="#e0ded9"/>
+              <text x="34" y="291" font-size="11" fill="#252527">CollateralRegistry</text>
+              <text x="34" y="306" font-size="9" fill="#8d8a94">escrow + custody events</text>
+              <text x="26" y="360" font-size="9" fill="#8d8a94">Creditcoin cannot read</text>
+              <text x="26" y="373" font-size="9" fill="#8d8a94">either chain directly.</text>
+
+              <rect x="216" y="26" width="180" height="370" fill="none" stroke="#d7d5d1" stroke-dasharray="4 4"/>
+              <text x="216" y="18" font-size="10" letter-spacing="1" fill="#6a60d2">TRANSPORT · NO AUTHORITY</text>
+
+              <rect x="226" y="54" width="160" height="86" fill="#fbfaf7" stroke="#d7d5d1"/>
+              <text x="238" y="74" font-size="11" fill="#252527">Attestcoin attestors</text>
+              <text x="238" y="92" font-size="9" fill="#8d8a94">observe source blocks,</text>
+              <text x="238" y="105" font-size="9" fill="#8d8a94">vote, and store the</text>
+              <text x="238" y="118" font-size="9" fill="#8d8a94">attestation on Creditcoin</text>
+
+              <rect x="226" y="160" width="160" height="86" fill="#fbfaf7" stroke="#d7d5d1"/>
+              <text x="238" y="180" font-size="11" fill="#252527">Proof builder</text>
+              <text x="238" y="198" font-size="9" fill="#8d8a94">off-chain: Merkle</text>
+              <text x="238" y="211" font-size="9" fill="#8d8a94">inclusion + continuity</text>
+              <text x="238" y="224" font-size="9" fill="#8d8a94">proof for one tx</text>
+
+              <rect x="226" y="266" width="160" height="86" fill="#fbfaf7" stroke="#d7d5d1"/>
+              <text x="238" y="286" font-size="11" fill="#252527">ProofWorker</text>
+              <text x="238" y="304" font-size="9" fill="#8d8a94">watches, requests,</text>
+              <text x="238" y="317" font-size="9" fill="#8d8a94">submits. Holds one key</text>
+              <text x="238" y="330" font-size="9" fill="#8d8a94">that can only pay gas.</text>
+
+              <rect x="416" y="26" width="300" height="370" fill="#f5f3fd" stroke="#c9c4eb"/>
+              <text x="416" y="18" font-size="10" letter-spacing="1" fill="#6a60d2">AUTHORITY · CREDITCOIN CC3 TESTNET 102031</text>
+
+              <rect x="428" y="48" width="276" height="44" fill="#fff" stroke="#c9c4eb"/>
+              <text x="440" y="66" font-size="11" fill="#252527">Attestation record</text>
+              <text x="440" y="81" font-size="9" fill="#8d8a94">attested source-chain blocks, stored on-chain</text>
+
+              <rect x="428" y="104" width="276" height="48" fill="#7165ed" stroke="#7165ed"/>
+              <text x="440" y="124" font-size="11" fill="#fff">Block-prover precompile</text>
+              <text x="440" y="140" font-size="9" fill="#ded9ff">0x…0FD2 · verifies inclusion + continuity</text>
+
+              <rect x="428" y="168" width="132" height="72" fill="#fff" stroke="#c9c4eb"/>
+              <text x="440" y="188" font-size="10.5" fill="#252527">ASCRepoDesk</text>
+              <text x="440" y="205" font-size="9" fill="#8d8a94">credit, margin,</text>
+              <text x="440" y="218" font-size="9" fill="#8d8a94">default</text>
+
+              <rect x="572" y="168" width="132" height="72" fill="#fff" stroke="#c9c4eb"/>
+              <text x="584" y="188" font-size="10.5" fill="#252527">ProvedPriceOracle</text>
+              <text x="584" y="205" font-size="9" fill="#8d8a94">N feeds, keyed by</text>
+              <text x="584" y="218" font-size="9" fill="#8d8a94">aggregator</text>
+
+              <rect x="428" y="252" width="132" height="72" fill="#fff" stroke="#c9c4eb"/>
+              <text x="440" y="272" font-size="10.5" fill="#252527">ProvedGold</text>
+              <text x="440" y="289" font-size="9" fill="#8d8a94">supply ≤ proved</text>
+              <text x="440" y="302" font-size="9" fill="#8d8a94">reserves</text>
+
+              <rect x="572" y="252" width="132" height="72" fill="#fff" stroke="#c9c4eb"/>
+              <text x="584" y="272" font-size="10.5" fill="#252527">ProvedMetal</text>
+              <text x="584" y="289" font-size="9" fill="#8d8a94">pSILVER · the</text>
+              <text x="584" y="302" font-size="9" fill="#8d8a94">listing primitive</text>
+
+              <rect x="428" y="336" width="276" height="56" fill="#fff" stroke="#c9c4eb" stroke-dasharray="4 3"/>
+              <text x="440" y="356" font-size="10.5" fill="#252527">GoldWindow · MetalWindow</text>
+              <text x="440" y="372" font-size="9" fill="#8d8a94">not ASCs — they read the proved round and hold inventory</text>
+
+              <g stroke="#7165ed" stroke-width="1.2" fill="none" marker-end="url(#a1)">
+                <path d="M196 134 H211 V97 H222"/>
+                <path d="M196 289 H211 V309 H222"/>
+                <path d="M306 140 V156"/>
+                <path d="M386 309 H406 V128 H424"/>
+                <path d="M306 246 V262"/>
+              </g>
+              <g stroke="#b9b5c8" stroke-width="1.1" fill="none" stroke-dasharray="3 3" marker-end="url(#a2)">
+                <path d="M386 97 H412 V66 H424"/>
+                <path d="M566 152 V164"/>
+                <path d="M566 324 V332"/>
+              </g>
+              <defs>
+                <marker id="a1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#7165ed"/></marker>
+                <marker id="a2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#b9b5c8"/></marker>
+              </defs>
+            </g>
+          </svg>
+          <figcaption><b>Figure 1</b> Solid arrows carry application data; dashed arrows carry protocol state. Nothing in the transport zone can decide anything: the attestors and the proof builder produce material the precompile independently checks, and the worker's key pays gas for a call that is permissionless and moves no value.</figcaption>
+        </figure>
+
+        <h3>Why the transport holds no authority</h3>
+        <p>The worker is the only component in the system holding a private key, which makes it the obvious thing to attack. It is worth being precise about what compromising it would achieve. <code>execute</code> is permissionless, so anyone may submit a proof — the worker is a convenience, not a gatekeeper. It moves no value, so a hostile submitter cannot draw principal, release collateral or mint. A forged proof fails at the precompile, and a replayed one fails at the query-id check. The worst outcome available to a compromised worker is declining to submit proofs, which stalls the desk into its own staleness guards: issuance freezes, windows close, and no bad state is written.</p>
+        <p>Reads on the other side are similarly narrow. The API returns unsigned calldata for a user's wallet to sign, so the service is not custodial and cannot move a user's position either.</p>
+      </section>
+
+      <section class="chapter" id="proof-flow">
+        <span class="eyebrow"><i></i> SECTION 5</span>
+        <h2>The proof flow, end to end</h2>
+        <p>Five stages carry one fact from a source chain into a decision. The path is identical whether the fact is a metal price, a reserve attestation or a custody event; only the bound emitter and the action discriminator differ.</p>
+
+        <figure>
+          <svg viewBox="0 0 720 250" role="img" aria-labelledby="fig2-title">
+            <title id="fig2-title">The five stages of the proof flow, from a source-chain event to a state change on Creditcoin</title>
+            <g font-family="DM Sans, sans-serif">
+              <line x1="10" y1="60" x2="710" y2="60" stroke="#d7d5d1"/>
+              <g fill="#7165ed"><circle cx="76" cy="60" r="4"/><circle cx="216" cy="60" r="4"/><circle cx="356" cy="60" r="4"/><circle cx="496" cy="60" r="4"/><circle cx="636" cy="60" r="4"/></g>
+
+              <text x="14" y="32" font-size="10" letter-spacing="1" fill="#6a60d2">OFF CREDITCOIN</text>
+              <text x="470" y="32" font-size="10" letter-spacing="1" fill="#6a60d2">ONE CREDITCOIN TRANSACTION</text>
+              <rect x="462" y="42" width="248" height="190" fill="#f5f3fd" stroke="#c9c4eb" stroke-dasharray="4 4"/>
+              <line x1="10" y1="60" x2="710" y2="60" stroke="#d7d5d1"/>
+              <g fill="#7165ed"><circle cx="496" cy="60" r="4"/><circle cx="636" cy="60" r="4"/></g>
+
+              <text x="14" y="90" font-size="12" fill="#252527">1 · Emit</text>
+              <text x="14" y="110" font-size="9.5" fill="#6a686b">A Chainlink aggregator</text>
+              <text x="14" y="123" font-size="9.5" fill="#6a686b">publishes AnswerUpdated,</text>
+              <text x="14" y="136" font-size="9.5" fill="#6a686b">or the registry emits a</text>
+              <text x="14" y="149" font-size="9.5" fill="#6a686b">custody event.</text>
+              <text x="14" y="170" font-size="9" fill="#8d8a94">Neither chain knows</text>
+              <text x="14" y="182" font-size="9" fill="#8d8a94">Creditcoin exists.</text>
+
+              <text x="154" y="90" font-size="12" fill="#252527">2 · Attest</text>
+              <text x="154" y="110" font-size="9.5" fill="#6a686b">Attestors cover the</text>
+              <text x="154" y="123" font-size="9.5" fill="#6a686b">source block and store</text>
+              <text x="154" y="136" font-size="9.5" fill="#6a686b">the attestation on</text>
+              <text x="154" y="149" font-size="9.5" fill="#6a686b">Creditcoin.</text>
+              <text x="154" y="170" font-size="9" fill="#8d8a94">Runs continuously,</text>
+              <text x="154" y="182" font-size="9" fill="#8d8a94">ahead of any request.</text>
+
+              <text x="294" y="90" font-size="12" fill="#252527">3 · Prove</text>
+              <text x="294" y="110" font-size="9.5" fill="#6a686b">The worker waits for</text>
+              <text x="294" y="123" font-size="9.5" fill="#6a686b">the height, then pulls</text>
+              <text x="294" y="136" font-size="9.5" fill="#6a686b">an inclusion proof and</text>
+              <text x="294" y="149" font-size="9.5" fill="#6a686b">a continuity proof.</text>
+              <text x="294" y="170" font-size="9" fill="#8d8a94">Off-chain compute,</text>
+              <text x="294" y="182" font-size="9" fill="#8d8a94">on-chain verification.</text>
+
+              <text x="476" y="90" font-size="12" fill="#252527">4 · Verify</text>
+              <text x="476" y="110" font-size="9.5" fill="#6a686b">execute() dedupes by</text>
+              <text x="476" y="123" font-size="9.5" fill="#6a686b">queryId, then calls the</text>
+              <text x="476" y="136" font-size="9.5" fill="#6a686b">precompile.</text>
+              <text x="476" y="157" font-size="9" fill="#8d8a94">A failed proof reverts</text>
+              <text x="476" y="169" font-size="9" fill="#8d8a94">the whole transaction.</text>
+
+              <text x="604" y="90" font-size="12" fill="#252527">5 · Act</text>
+              <text x="604" y="110" font-size="9" fill="#6a686b">Decode the receipt,</text>
+              <text x="604" y="123" font-size="9" fill="#6a686b">check the emitter and</text>
+              <text x="604" y="136" font-size="9" fill="#6a686b">the round, then write.</text>
+              <text x="604" y="157" font-size="9" fill="#8d8a94">Reserves raised, price</text>
+              <text x="604" y="169" font-size="9" fill="#8d8a94">marked, credit unlocked.</text>
+
+              <rect x="476" y="192" width="220" height="30" fill="#fff" stroke="#c9c4eb"/>
+              <text x="486" y="211" font-size="9" fill="#6a686b">One receipt, two logs: precompile, then business</text>
+            </g>
+          </svg>
+          <figcaption><b>Figure 2</b> Stages 1 to 3 happen off Creditcoin and carry no authority. Stages 4 and 5 are a single Creditcoin transaction, which is what closes the window in which unverified data could sit in storage.</figcaption>
+        </figure>
+
+        <h3>What the worker does, and what it refuses to do</h3>
+        <p>The worker sweeps each watched chain in windows of fifty blocks, tracking a cursor per watch. For each matching log it records the observation, waits for the source height to be attested, requests the proof, estimates gas and submits. Two behaviours in that loop are worth drawing out because they are consequences of the venue rather than general good practice.</p>
+        <p>First, <strong>a decodable revert during gas estimation aborts the submission</strong>. A replayed query, a stale round or an unregistered feed will fail however much gas it is given, and submitting anyway only pays for the revert. Second, because pallet-evm does not always surface precompile reverts during estimation, an <em>indeterminate</em> estimation failure falls back to a size-derived gas limit instead of abandoning a proof that would in fact succeed. Treating both failures identically would either burn gas on certain reverts or silently drop valid proofs.</p>
+        <p>The ledger of observed, attested, proved and confirmed events is held in memory, which is a deliberate scope limit rather than a design claim — see Section 10.</p>
+      </section>
+
+      <section class="chapter" id="contracts">
+        <span class="eyebrow"><i></i> SECTION 6</span>
+        <h2>The contract model</h2>
+        <p>Six contracts, of which four are Attestcoin Smart Contracts extending <code>ASCBase</code>. The dealing windows are ordinary contracts: they consume a proved round through the oracle's view interface but verify nothing themselves, which keeps the verification surface as small as the set of contracts that actually need it.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Contract</th><th>Chain</th><th>Base</th><th>Role</th></tr></thead>
+            <tbody>
+              {contractRows.map(([name, chain, base, role]) => (
+                <tr><td><code>{name}</code></td><td>{chain}</td><td>{base}</td><td>{role}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Supply bound to reserves</h3>
+        <p>The issuance guard is the clearest statement of the whole design, and it is four lines long. <code>provedReserves</code> moves only inside <code>_processAndEmitEvent</code>, which runs only after the precompile has verified a round from the bound Proof-of-Reserve aggregator.</p>
+        <pre><code set:html={issueGuard}></code></pre>
+        <p>The issuer holds <code>onlyOwner</code> and can therefore choose to mint less, never more. The ceiling is a figure they do not control and cannot forge, and with no proof at all the token cannot be issued even once.</p>
+        <h4>Units are matched on purpose</h4>
+        <p>Tokens are denominated in the reserve feed's own unit — grams for both listed metals — so the safety-critical comparison <code>totalSupply() + amount &lt;= provedReserves</code> needs no unit conversion. Gram-to-troy-ounce arithmetic exists only in the pricing path inside <code>MetalWindow</code>, using a troy ounce of 31.1034768 g scaled by 10<sup>7</sup> to stay in integer arithmetic. The trade-off is deliberate: a rounding error in pricing costs basis points on a fill, whereas a rounding error in the supply cap breaks the invariant the token exists to enforce.</p>
+
+        <h3>The credit lifecycle</h3>
+        <p><code>ASCRepoDesk</code> moves an agreement through five states. Two transitions are gated on proofs from a source chain, one on a proof plus a mark-to-market check, and two on conditions the chain can evaluate for itself.</p>
+
+        <figure>
+          <svg viewBox="0 0 720 220" role="img" aria-labelledby="fig3-title">
+            <title id="fig3-title">Repo agreement state machine showing which transitions require a verified proof</title>
+            <g font-family="DM Sans, sans-serif">
+              <rect x="6" y="74" width="104" height="46" fill="#fff" stroke="#d7d5d1"/>
+              <text x="58" y="102" font-size="11" fill="#252527" text-anchor="middle">Offered</text>
+
+              <rect x="170" y="74" width="124" height="46" fill="#fff" stroke="#7165ed"/>
+              <text x="232" y="96" font-size="11" fill="#252527" text-anchor="middle">CollateralLocked</text>
+              <text x="232" y="110" font-size="8.5" fill="#8d8a94" text-anchor="middle">pledge proved</text>
+
+              <rect x="354" y="74" width="104" height="46" fill="#fff" stroke="#7165ed"/>
+              <text x="406" y="96" font-size="11" fill="#252527" text-anchor="middle">Funded</text>
+              <text x="406" y="110" font-size="8.5" fill="#8d8a94" text-anchor="middle">principal drawn</text>
+
+              <rect x="518" y="18" width="104" height="46" fill="#fff" stroke="#d7d5d1"/>
+              <text x="570" y="46" font-size="11" fill="#252527" text-anchor="middle">Released</text>
+
+              <rect x="518" y="130" width="104" height="46" fill="#fff" stroke="#d7d5d1"/>
+              <text x="570" y="158" font-size="11" fill="#252527" text-anchor="middle">Defaulted</text>
+
+              <g stroke="#7165ed" stroke-width="1.2" fill="none" marker-end="url(#a3)">
+                <path d="M110 97 H164"/>
+                <path d="M294 97 H348"/>
+                <path d="M458 90 H488 V41 H512"/>
+              </g>
+              <g stroke="#8d8a94" stroke-width="1.2" fill="none" marker-end="url(#a4)">
+                <path d="M458 104 H488 V153 H512"/>
+              </g>
+              <defs>
+                <marker id="a3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#7165ed"/></marker>
+                <marker id="a4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#8d8a94"/></marker>
+              </defs>
+
+              <text x="137" y="88" font-size="9" fill="#6a60d2" text-anchor="middle">proof</text>
+              <text x="137" y="140" font-size="8.5" fill="#8d8a94" text-anchor="middle">CollateralPledged</text>
+              <text x="137" y="152" font-size="8.5" fill="#8d8a94" text-anchor="middle">from Sepolia</text>
+
+              <text x="321" y="88" font-size="9" fill="#6a60d2" text-anchor="middle">proof + mark</text>
+              <text x="321" y="140" font-size="8.5" fill="#8d8a94" text-anchor="middle">drawPrincipal, inside</text>
+              <text x="321" y="152" font-size="8.5" fill="#8d8a94" text-anchor="middle">the advance rate</text>
+
+              <text x="489" y="30" font-size="9" fill="#6a60d2" text-anchor="middle">proof</text>
+              <text x="628" y="88" font-size="8" fill="#8d8a94">repayment proved,</text>
+              <text x="628" y="100" font-size="8" fill="#8d8a94">then release proved</text>
+              <text x="628" y="130" font-size="8" fill="#8d8a94">maturity passes,</text>
+              <text x="628" y="142" font-size="8" fill="#8d8a94">repayment unproved</text>
+
+              <rect x="354" y="182" width="266" height="30" fill="#f5f3fd" stroke="#c9c4eb"/>
+              <text x="364" y="201" font-size="9" fill="#4a4750">Margin call: permissionless, from the proved round alone</text>
+            </g>
+          </svg>
+          <figcaption><b>Figure 3</b> Purple transitions require a proof verified in the same transaction. Default is the one transition driven by proved <em>silence</em>: because every repayment that exists carries a proof, an unproved balance at maturity is a real shortfall rather than a missing report.</figcaption>
+        </figure>
+
+        <p>Both risk actions are permissionless. <code>markUndercollateralised</code> succeeds only if the last proved round puts coverage below the maintenance margin, and reverts with <code>CoverageAdequate</code> otherwise; <code>clearMarginCall</code> lifts the flag once a later proved round restores it. No privileged role decides either, because both follow deterministically from proved state.</p>
+
+        <h3>The refusals</h3>
+        <p>The errors below are the enforcement surface. Each is a named revert rather than a guard that degrades to a default.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Contract</th><th>Error</th><th>Refuses</th></tr></thead>
+            <tbody>
+              {refusalRows.map(([where, err, why]) => (
+                <tr><td>{where}</td><td><code>{err}</code></td><td>{why}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="chapter" id="listing">
+        <span class="eyebrow"><i></i> SECTION 7</span>
+        <h2>Listing a real-world asset</h2>
+        <p>Silver was listed after gold without a line of new contract code. That is the test of whether the model generalises, and the path has four steps.</p>
+        <ol>
+          <li><strong>The asset needs a Proof-of-Reserve feed on an attested chain.</strong> This is the gate, and it is deliberately the hardest step. The feed is trustworthy precisely because the issuer does not operate it; an issuer who cannot obtain independent reserve attestation cannot list here, which is the intended outcome rather than a limitation to engineer around.</li>
+          <li><strong>Deploy <code>ProvedMetal</code></strong> with its name, symbol and that aggregator. The feed is immutable in the constructor, so supply is capped by proved reserves permanently and irrevocably from the first block.</li>
+          <li><strong>Register its price feed</strong> with <code>registerAggregator(...)</code> on the existing <code>ProvedPriceOracle</code> — one transaction, no deployment. Because a proved round is keyed by its emitting aggregator, one oracle serves every listed asset.</li>
+          <li><strong>Deploy a <code>MetalWindow</code></strong> against that aggregator to make the asset tradeable, and call <code>registerCollateralAsset(...)</code> on the desk with its advance rate and maintenance margin to make it borrowable.</li>
+        </ol>
+        <p>Adding the feeds to the worker's watch list and the asset to the dashboard's listings is configuration, held as JSON in the deployment environment rather than in code. The worker picks up the new aggregator on restart and begins proving its rounds.</p>
+        <div class="callout">
+          <span class="callout-label">WHAT GENERALISES, AND WHAT DOES NOT</span>
+          <p>The listing path is asset-agnostic in its mechanics but not in its units. A metal denominated in grams against a feed that reports grams needs no conversion in the supply cap; an asset whose reserve feed reports in a different unit from its token would reintroduce arithmetic into the safety-critical path. The honest generalisation is therefore: any asset with an independent Proof-of-Reserve feed can be listed, provided its token is denominated in that feed's unit.</p>
+        </div>
+      </section>
+
+      <section class="chapter" id="risk">
+        <span class="eyebrow"><i></i> SECTION 8</span>
+        <h2>Risk parameters</h2>
+        <p>Every value below was read from the live testnet deployment rather than from configuration files, since a deployed parameter and an intended one are not the same claim.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Parameter</th><th class="num-col">Value</th><th>Where</th><th>Effect</th></tr></thead>
+            <tbody>
+              {riskRows.map(([name, value, where, effect]) => (
+                <tr><td>{name}</td><td class="num-col">{value}</td><td><code>{where}</code></td><td>{effect}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <h3>How the advance rate is enforced</h3>
+        <p>At <code>drawPrincipal</code>, collateral value is computed from the pledged amount and the last proved round, the advance rate caps the permitted principal, and a draw above that cap reverts. The realised loan-to-value is computed on-chain and emitted with the draw, so it is an observed figure rather than a reported one:</p>
+        <pre><code>ltvBps = (principalUsd * 10_000) / collateralValueUsd</code></pre>
+        <p>In the worked example of Section 9, $20,000 was drawn against ten troy ounces marked at $4,349.135 — $43,491.35 of bullion — giving 4,598 bp, or 45.98%, comfortably inside the 6,000 bp advance rate.</p>
+        <h3>On the choice of 26 hours</h3>
+        <p>Both metal price feeds and both Proof-of-Reserve feeds publish on a 24-hour heartbeat. A staleness bound equal to the heartbeat would trip on ordinary jitter; two hours of slack absorbs that without materially widening the exposure. The bound is a hard stop in both directions — past it, issuance reverts with <code>StaleReserves</code> and dealing windows close with <code>StalePrice</code> rather than filling on a figure nobody has re-proved.</p>
+      </section>
+
+      <section class="chapter" id="evidence">
+        <span class="eyebrow"><i></i> SECTION 9</span>
+        <h2>Evidence from the testnet deployment</h2>
+        <p>The claim that proofs are preconditions rather than decoration is testable, and the test is that the same call fails before the proof and succeeds after it. Both halves are recorded below on Creditcoin CC3 Testnet.</p>
+
+        <h3>The refusals</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Attempted</th><th>Result</th></tr></thead>
+            <tbody>
+              <tr><td><code>issue</code> before any reserve proof</td><td>reverts <code>NoReservesProved()</code></td></tr>
+              <tr><td><code>drawPrincipal</code> before the pledge is proved</td><td>reverts <code>UnexpectedStatus(…, 1)</code> · selector <code>0xaf4cf409</code></td></tr>
+              <tr><td><code>issue</code> one unit past proved headroom</td><td>reverts <code>ExceedsProvedReserves(2566134…, 2566133466…)</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Then the successes</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Step</th><th>Transaction</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>Gold price proved from mainnet<br /><span style="color:#8d8a94">GoldPriceProved(434913500000, 10212, …)</span></td>
+                <td><a href={`${txBase}0x7dbfd096940c90833c4923a2830608289b8532483a7f3212e32fbe0950cc855d`}><code>0x7dbfd096…c855d</code></a></td>
+              </tr>
+              <tr>
+                <td>Pledge proved from Sepolia<br /><span style="color:#8d8a94">CollateralProved(…, 10 oz, …)</span></td>
+                <td><a href={`${txBase}0xce551f3536723aa4ef3819ab970d435f69b4ab058a16b8006a81a90529871e4a`}><code>0xce551f35…1e4a</code></a></td>
+              </tr>
+              <tr>
+                <td><strong>drawPrincipal, after both proofs</strong><br /><span style="color:#8d8a94">PrincipalDrawn(…, 40 tCTC, 4598)</span></td>
+                <td><a href={`${txBase}0xbdae44c945e53d3817f046981f06f4679e658e1d5fdd28f5d589cf13af5b7e3e`}><code>0xbdae44c9…7e3e</code></a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Both assets, on real feeds</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Asset</th><th>Price feed</th><th>Reserve feed</th><th>Proved value</th><th>Fill</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><code>pGOLD</code></td><td>XAU / USD</td><td>KAU Reserves</td>
+                <td class="num-col">$4,349.135 / oz<br />2,567,133.466 g</td>
+                <td><a href={`${txBase}0x8f3ebb0c557791f6dfbdeeeea8336fe72c4045f12141c8f95df3737c6233c18d`}><code>0x8f3ebb0c…c18d</code></a><br /><span style="color:#8d8a94">10 g, $1,405.270767, round 10212</span></td>
+              </tr>
+              <tr>
+                <td><code>pSILVER</code></td><td>XAG / USD</td><td>KAG Reserves</td>
+                <td class="num-col">$64.486 / oz<br />3,688,827.985 g</td>
+                <td><a href={`${txBase}0xbb122fab09d5f0c1e46aa6f9bddc79545f290827f09de881227f432e289eaa5d`}><code>0xbb122fab…aa5d</code></a><br /><span style="color:#8d8a94">100 g, $208.363940, round 29850</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Every fill emits the Chainlink round id it priced against, so a trader can check their execution against a specific proved round rather than against a figure the desk asserts after the fact. The proved reserve figures above were read back from the deployed tokens at the time of writing.</p>
+        <p>The contract suite carries 55 Solidity tests and the API and domain layer 17, covering the refusals above alongside replay rejection, untrusted-emitter rejection and the lifecycle transitions.</p>
+      </section>
+
+      <section class="chapter" id="limits">
+        <span class="eyebrow"><i></i> SECTION 10</span>
+        <h2>What this design does not prove</h2>
+        <p>This section is the one to read adversarially. A proof system oversold is worse than one honestly bounded, because the overselling is what makes people stop checking.</p>
+        <ul class="limits">
+          <li><strong>It proves provenance, not truth.</strong> The system proves that a named Chainlink aggregator published a particular number in a particular block. It does not prove the number is correct. What it removes from the trust path is the relay and the issuer's self-report; the <em>auditor</em> behind a Proof-of-Reserve feed remains trusted, as does Chainlink's operation of the feed. Anyone describing this as trustless reserve verification is overstating it.</li>
+          <li><strong>The demonstration borrows someone else's reserve feeds.</strong> <code>KAU Reserves</code> and <code>KAG Reserves</code> attest Kinesis's vaults. The listings therefore model an issuer whose reserves those feeds report — a stand-in, in the same way <code>TestBullion</code> stands in for a production bullion token. In a real deployment an issuer commissions their own Proof-of-Reserve feed and only the bound aggregator address changes; no contract logic does.</li>
+          <li><strong>There is no CTC/USD Chainlink feed.</strong> Quoting the dealing windows in a USD token is forced rather than chosen: no provable way to price metal in tCTC exists today. Credit is drawn in tCTC, but the mark and the quote are USD-denominated, and closing that gap needs a feed that does not currently exist.</li>
+          <li><strong>The direction is read-only.</strong> Attestcoin's writability path was in third-party audit at the time of writing, so Creditcoin never writes to Ethereum. Releasing source-chain collateral is a source-chain decision whose event is then proved back to Creditcoin — the desk observes the release, it does not command it.</li>
+          <li><strong>Trust binds to an emitting address, not to a chain.</strong> <code>ASCBase.execute</code> does not pass <code>chainKey</code> through to the handler, so each contract checks that a proved log came from the address it is bound to, following the reference examples. A bound address on a different attested chain would satisfy that check. This is a known property of the current base contract, not a mitigation the applications implement.</li>
+          <li><strong>Prices are only as fresh as the last proved round.</strong> A sharp move between rounds is invisible to the desk until the next round is proved. The 26-hour guard bounds how stale a mark can be before the system stops acting on it; it does not make the mark continuous, and a lender should read the advance rate as compensation for that discreteness.</li>
+          <li><strong>Operational scope is a demonstration's scope.</strong> Exactly one worker may run — two would prove the same events twice and pay for the duplicate's revert. Watches sweep sequentially, so a large backfill on one chain delays the others. The proof ledger is held in memory and does not survive a restart; it is an observability aid, and no contract state depends on it.</li>
+        </ul>
+        <p>None of these undermine the three claims of Section 1, and it is worth being precise about why. Each claim is of the form "the contract will not act unless a proof of the form it expects verifies in the same transaction." That property holds under every limit above. What the limits bound is the <em>meaning</em> of the proved fact — whose vault, whose audit, how fresh — rather than the enforcement of the gate.</p>
+      </section>
+
+      <section class="chapter" id="deployment">
+        <span class="eyebrow"><i></i> SECTION 11</span>
+        <h2>Deployment reference</h2>
+        <h3>Creditcoin CC3 Testnet · chain 102031</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Contract</th><th>Address</th></tr></thead>
+            <tbody>
+              {deployedCreditcoin.map(([name, addr]) => (
+                <tr><td>{name}</td><td><code>{addr}</code></td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <h3>Ethereum Sepolia · chain key 1</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Contract</th><th>Address</th></tr></thead>
+            <tbody>
+              <tr><td>CollateralRegistry</td><td><code>0x3A053Dbffb16C033eF16eBcD4dE45673BE3346d4</code></td></tr>
+              <tr><td>TestBullion (tXAU)</td><td><code>0x626DA908bdE6F66f9178B3128dd17D82dc74CE21</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Ethereum Mainnet · chain key 3 · read-only</h3>
+        <p>Aggregator addresses, not proxies — the proxy does not emit <code>AnswerUpdated</code>.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Feed</th><th>Role</th><th>Aggregator</th></tr></thead>
+            <tbody>
+              {feeds.map(([name, role, addr]) => (
+                <tr><td>{name}</td><td>{role}</td><td><code>{addr}</code></td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <h3>Protocol addresses</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Component</th><th>Address</th></tr></thead>
+            <tbody>
+              <tr><td>Block-prover precompile</td><td><code>0x0000000000000000000000000000000000000FD2</code></td></tr>
+              <tr><td>Chain-info precompile</td><td><code>0x0000000000000000000000000000000000000fd3</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="refs" id="references">
+        <span class="eyebrow"><i></i> REFERENCES</span>
+        <ol>
+          <li id="ref-1">Creditcoin documentation, <em>What is Creditcoin</em>. <a href="https://docs.creditcoin.org/">https://docs.creditcoin.org/</a></li>
+          <li id="ref-2">Creditcoin documentation, <em>Technical Specification</em>. <a href="https://docs.creditcoin.org/technical-specification">https://docs.creditcoin.org/technical-specification</a></li>
+          <li id="ref-3">Creditcoin documentation, <em>EVM-compatibility</em>. <a href="https://docs.creditcoin.org/evm-compatibility">https://docs.creditcoin.org/evm-compatibility</a></li>
+          <li id="ref-4">Attestcoin Protocol documentation, <em>Attestcoin Readability</em>. <a href="https://docs.attestcoin.org/attestcoin-protocol/attestcoin-readability">https://docs.attestcoin.org/attestcoin-protocol/attestcoin-readability</a></li>
+          <li id="ref-5">Attestcoin Protocol documentation. <a href="https://docs.attestcoin.org/">https://docs.attestcoin.org/</a></li>
+          <li id="ref-6">Chainlink. <a href="https://chain.link/">https://chain.link/</a></li>
+          <li id="ref-7">Chainlink reference data directory, Ethereum mainnet feeds. <a href="https://reference-data-directory.vercel.app/feeds-mainnet.json">https://reference-data-directory.vercel.app/feeds-mainnet.json</a></li>
+          <li id="ref-8">Creditcoin Testnet block explorer. <a href="https://creditcoin-testnet.blockscout.com">https://creditcoin-testnet.blockscout.com</a></li>
+        </ol>
+      </section>
+    </main>
+
+    <footer class="paper-footer no-print">
+      <span>MEU Exchange · technical whitepaper v1.0</span>
+      <span>Creditcoin CC3 Testnet · Attestcoin Protocol · Chainlink</span>
+      <a href="/whitepaper.pdf" download>Download PDF</a>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "meu-exchange",
+  "main": "src/cf.ts",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "assets": {
+    "directory": "./dist"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "CREDITCOIN_ENV": "testnet",
+    "SOURCE_CHAIN_KEY": "1",
+    "SOURCE_CHAIN_RPC_URL": "https://ethereum-sepolia-rpc.publicnode.com",
+    "SOURCE_REGISTRY_ADDRESS": "0x3A053Dbffb16C033eF16eBcD4dE45673BE3346d4",
+    "BULLION_TOKEN_ADDRESS": "0x626DA908bdE6F66f9178B3128dd17D82dc74CE21",
+    "PRICE_CHAIN_RPC_URL": "https://rpc.mevblocker.io",
+    "PRICE_FROM_BLOCK": "25967234",
+    "ASC_REPO_DESK_ADDRESS": "0x0231762F2F2285F6ea27Ad456E144C1371e4AF3B",
+    "LISTINGS": "[{\"name\": \"Gold\", \"symbol\": \"pGOLD\", \"unit\": \"g\", \"token\": \"0x2a8142Db4C3b90333339A6E25b225e808098BDB0\", \"window\": \"0x2369B00a916132cBD3639bB29353d062f5fF325a\", \"feed\": \"XAU / USD\"}, {\"name\": \"Silver\", \"symbol\": \"pSILVER\", \"unit\": \"g\", \"token\": \"0x74f6E83aA79a16CeD41Ec5b0697879E51e81cAd0\", \"window\": \"0x2BE77D62F16438ce44c41120846321d871b73806\", \"feed\": \"XAG / USD\"}]",
+    "LISTED_FEEDS": "[{\"name\": \"XAG / USD\", \"aggregator\": \"0xB38d1D12Ba17aA62255e588a0bC845c1a589A50d\", \"target\": \"0x9B6eB52D26CeF7b04bb52b307Db86262bD8D6C8A\", \"fromBlock\": 25956689}, {\"name\": \"KAG Reserves\", \"aggregator\": \"0x3B4f49f4aa5491B5a60C0724467A67b4910aEAAc\", \"target\": \"0x74f6E83aA79a16CeD41Ec5b0697879E51e81cAd0\", \"fromBlock\": 25955422}]",
+    "INLINE_WORKER": "false"
+  }
+}

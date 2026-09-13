@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://meu-exchange.reroute-stellarbackend.workers.dev/api/:path*"
+    }
+  ]
+}

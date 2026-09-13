@@ -42,6 +42,17 @@ export class RepoDeskGateway implements RepoDeskReader {
     return this.deskAddress;
   }
 
+  /**
+   * Recovers agreement ids from TermsOffered rather than a tracked set, so the desk reads the same
+   * on a request-scoped runtime that keeps no memory between calls.
+   */
+  async recentAgreementIds(span = 40_000): Promise<string[]> {
+    if (!this.contract || !this.provider) return [];
+    const head = await this.provider.getBlockNumber();
+    const logs = await this.contract.queryFilter("TermsOffered", Math.max(0, head - span), head);
+    return logs.flatMap((log) => ("args" in log ? [String(log.args.getValue("agreementId"))] : []));
+  }
+
   async readAgreement(agreementId: string): Promise<RepoAgreement | null> {
     if (!this.contract) return null;
     const raw = await this.contract.getAgreement(agreementId);

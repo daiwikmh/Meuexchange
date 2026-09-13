@@ -18,6 +18,11 @@ export function createApp(config: AppConfig, desk: RepoDeskGateway, ledger: Proo
     { role: "price", name: config.price.name, chainKey: config.price.chainKey, emitter: config.price.emitter ?? null }
   ];
 
+  const liveAgreements = async () => {
+    for (const agreementId of await desk.recentAgreementIds().catch(() => [])) index.track(agreementId);
+    return index.hydrate(desk);
+  };
+
   app.get("/health", (context) => context.json({ status: "ok", mode: config.mode, network: config.environment.network }));
 
   app.get("/api/environment", (context) =>
@@ -39,7 +44,7 @@ export function createApp(config: AppConfig, desk: RepoDeskGateway, ledger: Proo
 
   app.get("/api/dashboard", async (context) => {
     const [agreements, goldPrice] = await Promise.all([
-      desk.connected ? index.hydrate(desk) : Promise.resolve([]),
+      desk.connected ? liveAgreements() : Promise.resolve([]),
       desk.connected ? desk.goldPrice().catch(() => null) : Promise.resolve(null)
     ]);
 
@@ -86,7 +91,7 @@ export function createApp(config: AppConfig, desk: RepoDeskGateway, ledger: Proo
     return context.json({ feed: config.environment.goldFeed, price });
   });
 
-  app.get("/api/agreements", async (context) => context.json({ agreements: await index.hydrate(desk) }));
+  app.get("/api/agreements", async (context) => context.json({ agreements: await liveAgreements() }));
 
   app.get("/api/agreements/:id", async (context) => {
     try {

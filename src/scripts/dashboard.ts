@@ -253,8 +253,10 @@ async function connectWallet() {
   } finally { walletDialogButton.disabled = false; }
 }
 walletButton.addEventListener('click', () => {
-  if (walletAccount) return;
-  walletCopy.textContent = walletDialogCopy;
+  walletCopy.textContent = walletAccount
+    ? `Connected as ${shortAccount(walletAccount)}. Switch accounts from MetaMask itself.`
+    : walletDialogCopy;
+  walletDialogButton.disabled = Boolean(walletAccount);
   walletDialog.hidden = false;
   walletDialogButton.focus();
 });

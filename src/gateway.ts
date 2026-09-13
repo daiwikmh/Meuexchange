@@ -30,7 +30,8 @@ export class RepoDeskGateway implements RepoDeskReader {
     private readonly deskAddress?: string
   ) {
     if (!deskAddress) return;
-    this.provider = new JsonRpcProvider(environment.rpcUrl, environment.chainId, { staticNetwork: true });
+    // Batched log ranges are served as one slow unit, so each read goes out on its own request.
+    this.provider = new JsonRpcProvider(environment.rpcUrl, environment.chainId, { staticNetwork: true, batchMaxCount: 1 });
     this.contract = new Contract(deskAddress, ascRepoDeskAbi as never, this.provider);
   }
 
@@ -46,11 +47,16 @@ export class RepoDeskGateway implements RepoDeskReader {
    * Recovers agreement ids from TermsOffered rather than a tracked set, so the desk reads the same
    * on a request-scoped runtime that keeps no memory between calls.
    */
-  async recentAgreementIds(span = 40_000): Promise<string[]> {
+  async recentAgreementIds(span = 40_000, window = 5_000): Promise<string[]> {
     if (!this.contract || !this.provider) return [];
+    const contract = this.contract;
     const head = await this.provider.getBlockNumber();
-    const logs = await this.contract.queryFilter("TermsOffered", Math.max(0, head - span), head);
-    return logs.flatMap((log) => ("args" in log ? [String(log.args.getValue("agreementId"))] : []));
+    const ranges: Array<[number, number]> = [];
+    for (let start = Math.max(0, head - span); start <= head; start += window) {
+      ranges.push([start, Math.min(start + window - 1, head)]);
+    }
+    const batches = await Promise.all(ranges.map(([from, to]) => contract.queryFilter("TermsOffered", from, to)));
+    return batches.flat().flatMap((log) => ("args" in log ? [String(log.args.getValue("agreementId"))] : []));
   }
 
   async readAgreement(agreementId: string): Promise<RepoAgreement | null> {

@@ -53,19 +53,19 @@ export function createApp(config: AppConfig, desk: RepoDeskGateway, ledger: Proo
   );
 
   app.get("/api/dashboard", async (context) => {
-    const [agreements, goldPrice] = await Promise.all([
+    const [agreements, goldPrice, attested, listings] = await Promise.all([
       desk.connected ? liveAgreements() : Promise.resolve([]),
-      desk.connected ? desk.goldPrice().catch(() => null) : Promise.resolve(null)
+      desk.connected ? desk.goldPrice().catch(() => null) : Promise.resolve(null),
+      desk.connected
+        ? Promise.all(
+            chains().map(async (chain) => ({
+              ...chain,
+              attestedHeight: await desk.attestedHeight(chain.chainKey).catch(() => null)
+            }))
+          )
+        : Promise.resolve(chains().map((chain) => ({ ...chain, attestedHeight: null }))),
+      desk.listings(config.listings).catch(() => [])
     ]);
-
-    const attested = desk.connected
-      ? await Promise.all(
-          chains().map(async (chain) => ({
-            ...chain,
-            attestedHeight: await desk.attestedHeight(chain.chainKey).catch(() => null)
-          }))
-        )
-      : chains().map((chain) => ({ ...chain, attestedHeight: null }));
 
     return context.json({
       mode: config.mode,
@@ -84,7 +84,7 @@ export function createApp(config: AppConfig, desk: RepoDeskGateway, ledger: Proo
       },
       goldFeed: config.environment.goldFeed,
       goldPrice,
-      listings: await desk.listings(config.listings).catch(() => []),
+      listings,
       contracts: {
         ascRepoDesk: config.deskAddress ?? null,
         collateralRegistry: config.collateral.emitter ?? null,

@@ -120,6 +120,7 @@ function render(payload: DashboardPayload) {
   setText('[data-metric="spot-round"]', payload.goldPrice ? `round ${payload.goldPrice.roundId}${payload.goldPrice.stale ? ' · stale' : ''}` : 'no round proved yet');
   setText('[data-metric="proofs"]', confirmed);
   setText('[data-metric="margin"]', marginCalled);
+  setText('[data-count="offered"]', countByStatus(payload, ['offered']));
   setText('[data-count="locked"]', countByStatus(payload, ['collateral_locked']));
   setText('[data-count="funded"]', countByStatus(payload, ['funded']));
   setText('[data-count="closed"]', countByStatus(payload, ['released', 'defaulted']));

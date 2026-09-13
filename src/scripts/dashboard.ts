@@ -11,7 +11,7 @@ type AttestedChain = { role: string; name: string; chainKey: number; emitter: st
 type DashboardPayload = {
   mode: 'read-only' | 'proving';
   custody: string;
-  creditcoin: { network: string; chainId: number; explorerUrl: string; currency: { symbol: string; decimals: number } };
+  creditcoin: { network: string; chainId: number; rpcUrl: string; explorerUrl: string; currency: { symbol: string; decimals: number } };
   attestcoin: { proofBuilderUrl: string; blockProverPrecompile: string; chains: AttestedChain[] };
   goldFeed: { description: string; aggregator: string; decimals: number; chainKey: number };
   goldPrice: { answer: string; roundId: number; updatedAt: string; stale: boolean } | null;
@@ -260,6 +260,27 @@ function listingFor(symbol: string) {
   return listing;
 }
 
+/** Creditcoin addresses return no code on another chain, so a wrong network reads as a decode failure. */
+async function ensureCreditcoin(provider: NonNullable<ReturnType<typeof sdk.getProvider>>) {
+  const { chainId, network, rpcUrl, explorerUrl, currency } = snapshot!.creditcoin;
+  const target = `0x${chainId.toString(16)}`;
+  if (String(await provider.request({ method: 'eth_chainId' })) === target) return;
+  try {
+    await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: target }] });
+  } catch {
+    await provider.request({
+      method: 'wallet_addEthereumChain',
+      params: [{
+        chainId: target,
+        chainName: network,
+        rpcUrls: [rpcUrl],
+        blockExplorerUrls: [explorerUrl],
+        nativeCurrency: { name: currency.symbol, symbol: currency.symbol, decimals: currency.decimals }
+      }]
+    });
+  }
+}
+
 async function trade(symbol: string, side: 'buy' | 'sell') {
   if (!walletAccount) throw new Error('Connect a wallet to trade');
   const listing = listingFor(symbol);
@@ -271,6 +292,7 @@ async function trade(symbol: string, side: 'buy' | 'sell') {
 
   const eip1193 = sdk.getProvider();
   if (!eip1193) throw new Error('No wallet provider available');
+  await ensureCreditcoin(eip1193);
   const signer = await new BrowserProvider(eip1193 as never).getSigner();
   const value = parseUnits(String(amount), listing.decimals);
   const win = new Contract(listing.window, goldWindowAbi as never, signer);

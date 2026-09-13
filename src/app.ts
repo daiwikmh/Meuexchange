@@ -58,6 +58,7 @@ export function createApp(config: AppConfig, desk: RepoDeskGateway, ledger: Proo
       creditcoin: {
         network: config.environment.network,
         chainId: config.environment.chainId,
+        rpcUrl: config.environment.rpcUrl,
         explorerUrl: config.environment.explorerUrl,
         currency: config.environment.currency
       },

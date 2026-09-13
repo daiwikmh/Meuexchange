@@ -23,6 +23,12 @@ export function createApp(config: AppConfig, desk: RepoDeskGateway, ledger: Proo
     return index.hydrate(desk);
   };
 
+  /** Proved rounds and agreement state change per block, so no edge in front of this may hold a copy. */
+  app.use("/api/*", async (context, next) => {
+    await next();
+    context.header("cache-control", "no-store");
+  });
+
   app.get("/health", (context) => context.json({ status: "ok", mode: config.mode, network: config.environment.network }));
 
   app.get("/api/environment", (context) =>

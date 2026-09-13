@@ -1,3 +1,4 @@
+import type { ExecutionContext } from "hono";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { AgreementIndex, ProofLedger } from "./domain.js";

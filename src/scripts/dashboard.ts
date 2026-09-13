@@ -355,12 +355,22 @@ root.querySelector('#prepare-terms')?.addEventListener('click', async () => {
         maturity: Math.floor(Date.now() / 1000) + 30 * 86_400
       })
     });
-    const result = await response.json() as { error?: string; transaction?: unknown };
+    const result = await response.json() as { error?: string; transaction?: { to: string; data: string; value: string } };
     if (!response.ok || !result.transaction) throw new Error(result.error || 'The API rejected the terms');
 
-    showMessage('Terms call prepared. Sign it in your wallet to publish the agreement on Creditcoin.');
+    const eip1193 = sdk.getProvider();
+    if (!eip1193) throw new Error('No wallet provider available');
+    await ensureCreditcoin(eip1193);
+    const signer = await new BrowserProvider(eip1193 as never).getSigner();
+    const sent = await signer.sendTransaction({
+      to: result.transaction.to,
+      data: result.transaction.data,
+      value: BigInt(result.transaction.value)
+    });
+    showMessage('Publishing the agreement on Creditcoin.', `${snapshot!.creditcoin.explorerUrl}/tx/${sent.hash}`);
+    await sent.wait();
     await refresh();
-    activateTab('proofs');
+    activateTab('lifecycle');
   } catch (error) { showMessage(error instanceof Error ? error.message : 'Could not prepare the terms call'); }
   finally { button.disabled = false; }
 });

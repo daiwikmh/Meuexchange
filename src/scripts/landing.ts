@@ -7,7 +7,7 @@ const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, rejec
   image.onerror = reject;
   image.src = src;
 });
-const layers = Promise.all([loadImage('/images/city-mesh.webp'), loadImage('/images/city-xray.webp')]);
+const layers = Promise.all([loadImage('/images/vault-mesh.webp'), loadImage('/images/vault-xray.webp')]);
 let paused = reducedMotion.matches;
 const scannerUpdates: Array<() => void> = [];
 

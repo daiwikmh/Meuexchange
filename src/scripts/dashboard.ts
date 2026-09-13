@@ -34,8 +34,17 @@ let snapshot: DashboardPayload | null = null;
 let walletAccount = '';
 let walletChain = '';
 
-function showMessage(message: string) {
-  alertBox.querySelector('p')!.textContent = message;
+function showMessage(message: string, explorerTxUrl?: string) {
+  const paragraph = alertBox.querySelector('p')!;
+  paragraph.textContent = message;
+  if (explorerTxUrl) {
+    const link = document.createElement('a');
+    link.href = explorerTxUrl;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = 'View on Blockscout ↗';
+    paragraph.append(' ', link);
+  }
   alertBox.hidden = false;
 }
 
@@ -253,13 +262,13 @@ async function trade(symbol: string, side: 'buy' | 'sell') {
     const usdToken = new Contract(snapshot!.contracts.usd!, testUsdAbi as never, signer);
     await (await usdToken.approve(listing.window, buyUsd)).wait();
     const tx = await win.buy(value);
-    showMessage(`Buying ${amount} ${listing.unit} of ${listing.name} at the proved round: ${tx.hash}`);
+    showMessage(`Buying ${amount} ${listing.unit} of ${listing.name} at the proved round.`, `${snapshot!.creditcoin.explorerUrl}/tx/${tx.hash}`);
     await tx.wait();
   } else {
     const token = new Contract(listing.token, provedGoldAbi as never, signer);
     await (await token.approve(listing.window, value)).wait();
     const tx = await win.sell(value);
-    showMessage(`Selling ${amount} ${listing.unit} of ${listing.name} at the proved round: ${tx.hash}`);
+    showMessage(`Selling ${amount} ${listing.unit} of ${listing.name} at the proved round.`, `${snapshot!.creditcoin.explorerUrl}/tx/${tx.hash}`);
     await tx.wait();
   }
   await refresh();

@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/images/city.webp" alt="MEU Exchange" width="680" />
+<img src="public/images/vault.webp" alt="MEU Exchange" width="680" />
 
 # MEU Exchange
 

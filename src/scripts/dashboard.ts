@@ -202,7 +202,7 @@ function escapeHtml(value: string) { return value.replace(/[&<>'"]/g, (character
 
 async function refresh() {
   try { render(await getDashboard()); }
-  catch (error) { root.querySelector('#sync-status')!.innerHTML = '<i style="background:#c56a69"></i> API unavailable'; showMessage(`${error instanceof Error ? error.message : 'Could not reach the MEU API'}. Start the Hono server on port 3000.`); }
+  catch (error) { root.querySelector('#sync-status')!.innerHTML = '<i style="background:#c56a69"></i> API unavailable'; showMessage(error instanceof Error ? error.message : 'Could not reach the MEU API'); }
 }
 
 root.querySelectorAll<HTMLButtonElement>('[data-refresh]').forEach((button) => button.addEventListener('click', refresh));
@@ -212,26 +212,44 @@ const walletButton = root.querySelector<HTMLButtonElement>('#wallet-connect')!;
 const walletDialog = root.querySelector<HTMLElement>('#wallet-dialog')!;
 const walletDialogButton = root.querySelector<HTMLButtonElement>('#wallet-dialog-connect')!;
 const walletCopy = root.querySelector('#wallet-dialog-copy')!;
+const walletDialogCopy = walletCopy.textContent ?? '';
 function shortAccount(account: string) { return `${account.slice(0, 6)}…${account.slice(-4)}`; }
 function updateWallet() {
   setText('#wallet-state', walletAccount ? `${shortAccount(walletAccount)}${walletChain ? ` · ${walletChain}` : ''}` : 'Wallet not connected');
   walletButton.querySelector('span:last-child')!.textContent = walletAccount ? shortAccount(walletAccount) : 'Connect wallet';
 }
+async function adoptAccounts(accounts: readonly string[]) {
+  walletAccount = accounts[0] || '';
+  const provider = sdk.getProvider();
+  walletChain = walletAccount && provider ? String(await provider.request({ method: 'eth_chainId' })) : '';
+  updateWallet();
+}
+
+/** Adopts an existing MetaMask approval without prompting, so a connected wallet is never asked twice. */
+async function restoreWallet() {
+  const provider = sdk.getProvider();
+  if (!provider) return;
+  provider.on('accountsChanged', (accounts) => void adoptAccounts(accounts as string[]));
+  provider.on('chainChanged', () => void adoptAccounts([walletAccount]));
+  await adoptAccounts((await provider.request({ method: 'eth_accounts' })) as string[]);
+}
+
 async function connectWallet() {
   walletDialogButton.disabled = true;
   walletCopy.textContent = 'Waiting for approval in MetaMask…';
   try {
-    const accounts = await sdk.connect();
-    walletAccount = accounts[0] || '';
-    const provider = sdk.getProvider();
-    if (provider) walletChain = String(await provider.request({ method: 'eth_chainId' }));
+    await adoptAccounts(await sdk.connect());
     walletDialog.hidden = true;
-    updateWallet();
   } catch (error) {
     walletCopy.textContent = error instanceof Error ? error.message : 'MetaMask connection was cancelled.';
   } finally { walletDialogButton.disabled = false; }
 }
-walletButton.addEventListener('click', () => { walletDialog.hidden = false; walletDialogButton.focus(); });
+walletButton.addEventListener('click', () => {
+  if (walletAccount) return;
+  walletCopy.textContent = walletDialogCopy;
+  walletDialog.hidden = false;
+  walletDialogButton.focus();
+});
 walletDialogButton.addEventListener('click', connectWallet);
 root.querySelector('[data-close-wallet]')!.addEventListener('click', () => { walletDialog.hidden = true; });
 walletDialog.addEventListener('click', (event) => { if (event.target === walletDialog) walletDialog.hidden = true; });
@@ -346,6 +364,7 @@ function mountChart() {
 }
 
 mountChart();
+void restoreWallet();
 refresh();
 
 export const dashboardReady = true;

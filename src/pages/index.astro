@@ -48,7 +48,7 @@ const applications = [
         <canvas class="scan-canvas" aria-hidden="true"></canvas>
         <div class="hero-heading"><h1>Real gold.<br class="mobile-break" /> Proved across chains.</h1><p>Bullion-backed credit on Creditcoin, priced and verified where the evidence lives.</p></div>
         <div class="scan-controls"><button class="scan-toggle" aria-pressed="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3v10M11 3v10"/></svg><span>Pause scan</span></button><span class="scan-hint">Move to discover ↗</span></div>
-        <div class="hero-caption"><span class="status-dot"></span> Interactive visualisation <span>/</span> Illustrative, not live asset data</div>
+        <div class="hero-caption"><span class="status-dot"></span> Interactive visualisation <span>/</span> Live desk on Creditcoin testnet</div>
         <a class="scroll-cue" href="#about" aria-label="Discover MEU Exchange"><svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v17m-6-6 6 6 6-6"/></svg></a>
       </section>
       <section class="intro section-frame" id="about">
@@ -85,7 +85,7 @@ const applications = [
       <section class="demo-section section-frame" id="explore" aria-labelledby="demo-title">
         <div class="section-heading"><h2 id="demo-title">See the proof path.<br />Follow the evidence.</h2><p>A small, interactive look at how an ounce of gold becomes drawable credit on Creditcoin.</p></div>
         <div class="demo-workspace">
-          <div class="demo-summary"><span class="small-label"><i class="status-dot"></i> INTERACTIVE DEMO</span><h3>MEU Bullion Repo</h3><p>Illustrative agreement · No funds or transactions are sent.</p><div class="demo-asset-mark" aria-hidden="true"><svg viewBox="0 0 200 200"><path d="m100 20 80 45v75l-80 45-80-45V65Zm0 0v80m-80-35 80 35 80-35m-80 35v85m-80-45 80-40 80 40"/></svg></div><span class="demo-caption">A CLEAR PATH FROM EVENT TO PROOF</span></div>
+          <div class="demo-summary"><span class="small-label"><i class="status-dot"></i> INTERACTIVE DEMO</span><h3>MEU Bullion Repo</h3><p>Walk the proof path here · Trade the live desk on the dashboard.</p><div class="demo-asset-mark" aria-hidden="true"><svg viewBox="0 0 200 200"><path d="m100 20 80 45v75l-80 45-80-45V65Zm0 0v80m-80-35 80 35 80-35m-80 35v85m-80-45 80-40 80 40"/></svg></div><span class="demo-caption">A CLEAR PATH FROM EVENT TO PROOF</span></div>
           <div class="demo-flow"><ol class="workflow-steps">{['Publish the credit line','Pledge the bullion','Prove the gold price','Draw the principal'].map((step,i)=><li data-demo-step={i} class={i===0?'current':''}><span class="step-number">0{i+1}</span><span>{step}</span><span class="step-state">{i===0?'Ready':'Upcoming'}</span></li>)}</ol><div class="demo-next"><p id="demo-description" aria-live="polite">Start with lender-defined repo terms published on Creditcoin.</p><button class="dark-button" id="demo-advance"><span>Pledge collateral</span><svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6"/></svg></button><button class="reset-button" id="demo-reset">Reset demo</button></div></div>
         </div>
       </section>
